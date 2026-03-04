@@ -27,11 +27,15 @@ import api from "../api/axios";
 
 type PendingRequest = {
   RequestId: number;
+  ActivationKey: string | null;
   RegisteredName: string | null;
+  Branch: string | null;
+  TIN: string | null;
   DaysTrial: number;
   EmployeeCount: number;
   IsPermanent: boolean;
   IsUnlimitedEmployeeCount: boolean;
+  RequestCode: string | null;
   OptimizationDate: string | null;
   SystemEdition: string | null;
   Status?: string | null;
@@ -52,8 +56,18 @@ type PendingSummary = {
   total_company_count?: number;
 };
 
+type RequestInfo = {
+  request_no: string | null;
+  date: string | null;
+  client: string | null;
+  server_license_type: string | null;
+  date_and_time_request: string | null;
+  remarks: string | null;
+};
+
 type PendingRequestsResponse = {
   items: PendingRequest[];
+  request_info?: RequestInfo | null;
   summary?: PendingSummary;
   pagination: PaginationInfo;
 };
@@ -106,6 +120,19 @@ function formatDate(value: string | null) {
   return date.toLocaleDateString();
 }
 
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
 function booleanText(value: boolean) {
   return value ? "Yes" : "No";
 }
@@ -120,6 +147,29 @@ function statusTextClass(status: string | null | undefined, filingStatusId: numb
   }
 
   return "text-slate-900";
+}
+
+function displayCellText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+
+  const text = String(value).trim();
+  return text.length > 0 ? text : "-";
+}
+
+type TruncatedTextProps = {
+  value: unknown;
+  maxWidthClass?: string;
+};
+
+function TruncatedText({ value, maxWidthClass = "max-w-[180px]" }: TruncatedTextProps) {
+  const text = displayCellText(value);
+  return (
+    <span className={`block truncate ${maxWidthClass}`} title={text}>
+      {text}
+    </span>
+  );
 }
 
 function textValue(value: unknown): string {
@@ -187,6 +237,7 @@ function normalizeResponse(
     );
     return {
       items: payload,
+      request_info: null,
       summary: {
         total_employee_count: fallbackTotalEmployeeCount,
         total_company_count: 0,
@@ -211,9 +262,11 @@ function normalizeResponse(
   const totalPages = Number.isInteger(p.total_pages) && p.total_pages > 0 ? p.total_pages : 1;
   const payloadTotalEmployeeCount = Number((payload.summary && payload.summary.total_employee_count) || 0);
   const payloadTotalCompanyCount = Number((payload.summary && payload.summary.total_company_count) || 0);
+  const requestInfo = payload.request_info || null;
 
   return {
     items,
+    request_info: requestInfo,
     summary: {
       total_employee_count: Number.isFinite(payloadTotalEmployeeCount) ? payloadTotalEmployeeCount : 0,
       total_company_count: Number.isFinite(payloadTotalCompanyCount) ? payloadTotalCompanyCount : 0,
@@ -253,6 +306,7 @@ function PendingRequestsPage() {
   const [totalEmployeeCount, setTotalEmployeeCount] = useState(0);
   const [totalCompanyCount, setTotalCompanyCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [requestInfo, setRequestInfo] = useState<RequestInfo | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -292,6 +346,7 @@ function PendingRequestsPage() {
         const normalized = normalizeResponse(response.data, nextPage, nextPageSize);
 
         setRows(normalized.items);
+        setRequestInfo(normalized.request_info || null);
         setSelectedRequestIds([]);
         setPage(normalized.pagination.page);
         setPageSize(normalized.pagination.page_size);
@@ -472,9 +527,9 @@ function PendingRequestsPage() {
 
   return (
     <div className="relative h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-3 p-3 md:gap-4 md:p-4">
-        <Card className="shrink-0 gap-3 border-slate-200">
-          <CardHeader className="pb-0">
+      <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-2">
+        <Card className="m-0 shrink-0 rounded-none border-slate-200">
+          <CardHeader className="m-0 sm:px-3">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               
               {/* LEFT SIDE */}
@@ -502,10 +557,38 @@ function PendingRequestsPage() {
 
                 {/* Description */}
                 <CardDescription className="text-xs md:text-sm">
-                  {selectedRequestId
-                    ? `Request No: ${selectedRequestNo || selectedRequestId} - ${selectedClient || "Selected Client"}`
-                    : "Review all request activation keys across companies."}
+                  Review all request activation keys across companies.
                 </CardDescription>
+                {selectedRequestId ? (
+                  <div className="grid gap-1 text-[11px] text-slate-700 md:grid-cols-2">
+                    <div>
+                      <span className="font-medium">Request No:</span>{" "}
+                      {displayCellText(requestInfo?.request_no || selectedRequestNo || selectedRequestId)}
+                    </div>
+                    <div>
+                      <span className="font-medium">Date:</span>{" "}
+                      {requestInfo?.date ? formatDate(requestInfo.date) : "-"}
+                    </div>
+                    <div>
+                      <span className="font-medium">Client:</span>{" "}
+                      {displayCellText(requestInfo?.client || selectedClient)}
+                    </div>
+                    <div>
+                      <span className="font-medium">Server License Type:</span>{" "}
+                      {displayCellText(requestInfo?.server_license_type)}
+                    </div>
+                    <div>
+                      <span className="font-medium">Date and Time Request:</span>{" "}
+                      {formatDateTime(requestInfo?.date_and_time_request || null)}
+                    </div>
+                    <div className="md:col-span-2">
+                      <span className="font-medium">Remarks:</span>
+                      <span className="mt-0.5 block">
+                        <TruncatedText value={requestInfo?.remarks} maxWidthClass="max-w-[260px] md:max-w-[560px]" />
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="text-xs font-medium text-slate-700">
                   {`Total Employee Count: ${totalEmployeeCount.toLocaleString()}`}
                   {totalCompanyCount > 0
@@ -576,7 +659,7 @@ function PendingRequestsPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="flex flex-wrap items-center gap-2">
+          <CardContent className="m-0 flex flex-wrap items-center gap-2 sm:px-3">
             <Badge variant="secondary">Total: {totalItems}</Badge>
             <Badge variant="outline">Selected: {selectedRequestIds.length}</Badge>
             <Badge variant="outline">
@@ -592,7 +675,7 @@ function PendingRequestsPage() {
           </Alert>
         ) : null}
 
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200">
+        <Card className="mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-slate-200">
           <CardContent className="flex min-h-0 flex-1 flex-col p-0">
             <div className="min-h-0 flex-1 overflow-auto">
               {loading && rows.length === 0 ? (
@@ -605,7 +688,7 @@ function PendingRequestsPage() {
                   No activation key request records.
                 </div>
               ) : (
-                <table className="w-full min-w-[860px] border-collapse text-[11px] md:min-w-[980px]">
+                <table className="w-full min-w-[1360px] border-collapse text-[11px] md:min-w-[1500px]">
                   <thead>
                     <tr className="text-slate-600">
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
@@ -618,10 +701,19 @@ function PendingRequestsPage() {
                         />
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Activation Key
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Status
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Registered Name
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Branch
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        TIN
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Trial Days
@@ -634,6 +726,9 @@ function PendingRequestsPage() {
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Unlimited Employees
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Request Code
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Optimization Date
@@ -666,11 +761,26 @@ function PendingRequestsPage() {
                             />
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
-                            {row.Status || "-"}
+                            <TruncatedText value={row.ActivationKey} maxWidthClass="max-w-[180px]" />
                           </td>
-                          <td className="px-2.5 py-2 md:px-3">{row.RegisteredName || "-"}</td>
-                          <td className="px-2.5 py-2 md:px-3">{row.DaysTrial}</td>
-                          <td className="px-2.5 py-2 md:px-3">{row.EmployeeCount}</td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.Status} maxWidthClass="max-w-[130px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.RegisteredName} maxWidthClass="max-w-[260px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.Branch} maxWidthClass="max-w-[180px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.TIN} maxWidthClass="max-w-[140px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.DaysTrial} maxWidthClass="max-w-[100px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.EmployeeCount} maxWidthClass="max-w-[110px]" />
+                          </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <Badge
                               variant={row.IsPermanent ? "secondary" : "outline"}
@@ -688,9 +798,14 @@ function PendingRequestsPage() {
                             </Badge>
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
-                            {formatDate(row.OptimizationDate)}
+                            <TruncatedText value={row.RequestCode} maxWidthClass="max-w-[220px]" />
                           </td>
-                          <td className="px-2.5 py-2 md:px-3">{row.SystemEdition || "-"}</td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={formatDate(row.OptimizationDate)} maxWidthClass="max-w-[130px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.SystemEdition} maxWidthClass="max-w-[180px]" />
+                          </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <div className="flex flex-wrap items-center gap-2">
                               <Button
@@ -740,13 +855,13 @@ function PendingRequestsPage() {
               )}
             </div>
 
-            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 px-3 py-3 md:flex-row md:items-center md:justify-between md:px-4">
-              <p className="text-xs text-muted-foreground">
+            <div className="flex shrink-0 flex-col gap-1.5 border-t border-slate-100 px-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[11px] text-muted-foreground">
                 Showing {showingFrom}-{showingTo} of {totalItems}
               </p>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="text-xs text-muted-foreground" htmlFor="page-size">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <label className="text-[11px] text-muted-foreground" htmlFor="page-size">
                   Rows
                 </label>
                 <select
@@ -759,7 +874,7 @@ function PendingRequestsPage() {
                     handlePageSizeChange(parsed);
                   }}
                   disabled={disableActions}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  className="h-7 rounded-md border border-input bg-background px-1.5 text-[11px]"
                 >
                   {PAGE_SIZE_OPTIONS.map((option) => (
                     <option key={String(option.value)} value={String(option.value)}>
@@ -774,12 +889,12 @@ function PendingRequestsPage() {
                   size="sm"
                   onClick={() => handlePageChange(page - 1)}
                   disabled={disableActions || page <= 1}
-                  className="gap-1"
+                  className="h-7 gap-1 px-1.5 text-[11px]"
                 >
                   <ChevronLeft className="size-4" />
-                  Prev
+                  <span className="hidden sm:inline">Prev</span>
                 </Button>
-                <span className="min-w-24 text-center text-xs text-muted-foreground">
+                <span className="min-w-14 text-center text-[11px] text-muted-foreground">
                   Page {page} / {Math.max(1, totalPages)}
                 </span>
                 <Button
@@ -788,9 +903,9 @@ function PendingRequestsPage() {
                   size="sm"
                   onClick={() => handlePageChange(page + 1)}
                   disabled={disableActions || page >= totalPages}
-                  className="gap-1"
+                  className="h-7 gap-1 px-1.5 text-[11px]"
                 >
-                  Next
+                  <span className="hidden sm:inline">Next</span>
                   <ChevronRight className="size-4" />
                 </Button>
               </div>

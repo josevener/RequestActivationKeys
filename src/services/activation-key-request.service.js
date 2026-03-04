@@ -11,6 +11,76 @@ const parsePaging = ({ page, pageSize, loadAll }) => {
   return { safePage, safePageSize, safeLoadAll: false };
 };
 
+const extractRegInfoValue = (regInfo, key) => {
+  if (typeof regInfo !== "string" || typeof key !== "string" || key.length === 0) {
+    return null;
+  }
+
+  const marker = `${key}=`;
+  const startIndex = regInfo.indexOf(marker);
+  if (startIndex < 0) {
+    return null;
+  }
+
+  const valueStartIndex = startIndex + marker.length;
+  let valueEndIndex = regInfo.indexOf("\r\n", valueStartIndex);
+  if (valueEndIndex < 0) {
+    valueEndIndex = regInfo.indexOf("\n", valueStartIndex);
+  }
+  if (valueEndIndex < 0) {
+    valueEndIndex = regInfo.length;
+  }
+
+  const value = regInfo.slice(valueStartIndex, valueEndIndex).trim();
+  return value.length > 0 ? value : null;
+};
+
+const mapActivationKeyRequestDetailRows = (rows = []) =>
+  rows.map((row) => {
+    const mapped = { ...row };
+    mapped.ActivationKey = extractRegInfoValue(mapped.RegInfoRaw, "ActivationKey");
+    delete mapped.RegInfoRaw;
+    return mapped;
+  });
+
+const getActivationKeyRequestInfo = async ({ pool, requestId }) => {
+  const safeRequestId = Number.parseInt(requestId, 10);
+  if (Number.isNaN(safeRequestId) || safeRequestId <= 0) {
+    return null;
+  }
+
+  const result = await pool
+    .request()
+    .input("requestId", sql.Int, safeRequestId)
+    .query(`
+      SELECT TOP 1
+        ar.RequestNo,
+        [Date] = ar.DateRequested,
+        c.Name AS Client,
+        slt.Name AS ServerLicenseType,
+        ar.DateAndTimeRequested,
+        Remarks = ar.Reason
+      FROM tblActivationKeyRequests ar
+      LEFT JOIN tblClients c ON c.Id = ar.ClientId
+      LEFT JOIN tblServerLicenseTypes slt ON slt.Id = ar.ServerLicenseTypeId
+      WHERE ar.Id = @requestId
+    `);
+
+  const row = result.recordset[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    request_no: row.RequestNo || null,
+    date: row.Date || null,
+    client: row.Client || null,
+    server_license_type: row.ServerLicenseType || null,
+    date_and_time_request: row.DateAndTimeRequested || null,
+    remarks: row.Remarks || null,
+  };
+};
+
 const SUMMARY_DATASET_SQL = `
   WITH RequestStatsRaw AS (
     SELECT
@@ -375,6 +445,10 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
     safeRequestId !== null && !Number.isNaN(safeRequestId) && safeRequestId > 0
       ? clientScopeSummary.totalEmployeeCount
       : currentRequestTotalEmployeeCount;
+  const requestInfo =
+    safeRequestId !== null && !Number.isNaN(safeRequestId) && safeRequestId > 0
+      ? await getActivationKeyRequestInfo({ pool, requestId: safeRequestId })
+      : null;
   if (safeLoadAll) {
     const loadAllRequest = pool.request();
 
@@ -386,11 +460,11 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
       SELECT
         ard.Id AS RequestId,
         ard.KeyRequestId,
-        RegisteredName = CASE
-          WHEN NULLIF(LTRIM(RTRIM(ard.Branch)), '') IS NULL
-            THEN COALESCE(NULLIF(ard.RegisteredName, ''), c.Name)
-          ELSE COALESCE(NULLIF(ard.RegisteredName, ''), c.Name) + ' (' + LTRIM(RTRIM(ard.Branch)) + ')'
-        END,
+        ard.RegInfo AS RegInfoRaw,
+        NULLIF(LTRIM(RTRIM(ard.Branch)), '') AS Branch,
+        ard.TIN,
+        ard.RequestCode,
+        RegisteredName = COALESCE(NULLIF(ard.RegisteredName, ''), c.Name),
         ard.FilingStatusId,
         [Status] = CASE ard.FilingStatusId
           WHEN 1 THEN 'Filed'
@@ -412,7 +486,8 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
     `);
 
     return {
-      items: loadAllResult.recordset,
+      items: mapActivationKeyRequestDetailRows(loadAllResult.recordset),
+      request_info: requestInfo,
       summary: {
         total_employee_count: effectiveTotalEmployeeCount,
         total_company_count: clientScopeSummary.companyCount,
@@ -445,11 +520,11 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
     SELECT
       ard.Id AS RequestId,
       ard.KeyRequestId,
-      RegisteredName = CASE
-        WHEN NULLIF(LTRIM(RTRIM(ard.Branch)), '') IS NULL
-          THEN COALESCE(NULLIF(ard.RegisteredName, ''), c.Name)
-        ELSE COALESCE(NULLIF(ard.RegisteredName, ''), c.Name) + ' (' + LTRIM(RTRIM(ard.Branch)) + ')'
-      END,
+      ard.RegInfo AS RegInfoRaw,
+      NULLIF(LTRIM(RTRIM(ard.Branch)), '') AS Branch,
+      ard.TIN,
+      ard.RequestCode,
+      RegisteredName = COALESCE(NULLIF(ard.RegisteredName, ''), c.Name),
       ard.FilingStatusId,
       [Status] = CASE ard.FilingStatusId
         WHEN 1 THEN 'Filed'
@@ -473,7 +548,8 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
   `);
 
   return {
-    items: result.recordset,
+    items: mapActivationKeyRequestDetailRows(result.recordset),
+    request_info: requestInfo,
     summary: {
       total_employee_count: effectiveTotalEmployeeCount,
       total_company_count: clientScopeSummary.companyCount,
