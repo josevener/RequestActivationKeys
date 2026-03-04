@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
@@ -144,6 +145,7 @@ function PendingRequestsPage() {
   const [loadError, setLoadError] = useState("");
   const [banner, setBanner] = useState<BannerState | null>(null);
   const [isProcessingApprove, setIsProcessingApprove] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const fetchRows = useCallback(
     async (nextPage: number, nextPageSize: number, silent = false) => {
@@ -247,7 +249,7 @@ function PendingRequestsPage() {
     return rows.every((row) => selectedSet.has(row.RequestId));
   }, [rows, selectedRequestIds.length, selectedSet]);
 
-  const disableActions = isProcessingApprove || loading || isRefreshing;
+  const disableActions = isProcessingApprove || loading || isRefreshing || isNavigating;
 
   const showingFrom = rows.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const showingTo = rows.length === 0 ? 0 : (page - 1) * pageSize + rows.length;
@@ -309,7 +311,7 @@ function PendingRequestsPage() {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
+    <div className="relative h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-3 p-3 md:gap-4 md:p-4">
         <Card className="shrink-0 gap-3 border-slate-200">
           <CardHeader className="pb-0">
@@ -324,7 +326,10 @@ function PendingRequestsPage() {
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={() => navigate("/requests")}
+                    onClick={() => {
+                      setIsNavigating(true);
+                      navigate("/requests");
+                    }}
                     disabled={disableActions}
                   >
                     <ArrowLeft className="size-4" />
@@ -572,6 +577,16 @@ function PendingRequestsPage() {
           </CardContent>
         </Card>
       </div>
+      <LoadingState
+        show={isRefreshing || isNavigating || isProcessingApprove}
+        message={
+          isNavigating
+            ? "Opening request overview..."
+            : isProcessingApprove
+            ? "Processing approval..."
+            : "Updating activation key requests..."
+        }
+      />
     </div>
   );
 }

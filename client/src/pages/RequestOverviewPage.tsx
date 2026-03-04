@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
 import api from "../api/axios";
 import { useAuth } from "@/context/AuthContext";
@@ -243,6 +244,7 @@ function RequestOverviewPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const buildSummaryParams = useCallback(
     (
@@ -352,11 +354,12 @@ function RequestOverviewPage() {
     void fetchClientOptions();
   }, [fetchClientOptions]);
 
-  const disableActions = loading || isRefreshing;
+  const disableActions = loading || isRefreshing || isNavigating;
   const showingFrom = rows.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const showingTo = rows.length === 0 ? 0 : (page - 1) * pageSize + rows.length;
 
   const openActivationKeys = (row: SummaryRow) => {
+    setIsNavigating(true);
     const params = new URLSearchParams({
       request_id: String(row.RequestId),
       request_no: row.RequestNo || "",
@@ -436,7 +439,7 @@ function RequestOverviewPage() {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
+    <div className="relative h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-2">
         <Card className="m-0 shrink-0 rounded-none border-slate-200">
           <CardHeader className="m-0 sm:px-3">
@@ -781,6 +784,10 @@ function RequestOverviewPage() {
           </CardContent>
         </Card>
       </div>
+      <LoadingState
+        show={isRefreshing || isNavigating}
+        message={isNavigating ? "Opening activation key requests..." : "Updating request list..."}
+      />
     </div>
   );
 }
