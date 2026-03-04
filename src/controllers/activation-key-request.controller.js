@@ -51,11 +51,58 @@ const parseSummarySearch = (req) => {
   };
 };
 
+const parseDateOnly = (value, fieldName) => {
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new HttpError(400, `${fieldName} must be in YYYY-MM-DD format`);
+  }
+
+  const [yearRaw, monthRaw, dayRaw] = raw.split("-");
+  const year = Number.parseInt(yearRaw, 10);
+  const month = Number.parseInt(monthRaw, 10);
+  const day = Number.parseInt(dayRaw, 10);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() + 1 !== month ||
+    date.getUTCDate() !== day
+  ) {
+    throw new HttpError(400, `${fieldName} is not a valid calendar date`);
+  }
+
+  return raw;
+};
+
+const parseSummaryFilters = (req) => {
+  const clientRaw = String(req.query.client || "").trim();
+  const normalizedClient = !clientRaw || clientRaw.toLowerCase() === "all" ? null : clientRaw;
+  const dateFrom = parseDateOnly(req.query.date_from, "date_from");
+  const dateTo = parseDateOnly(req.query.date_to, "date_to");
+
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    throw new HttpError(400, "date_from must be on or before date_to");
+  }
+
+  return {
+    client: normalizedClient,
+    dateFrom,
+    dateTo,
+  };
+};
+
 const listActivationKeyRequestSummariesHandler = async (req, res, next) => {
   try {
     const { page, pageSize } = parsePaging(req);
     const search = parseSummarySearch(req);
-    const requests = await listActivationKeyRequestSummaries({ page, pageSize, search });
+    const filters = parseSummaryFilters(req);
+    const requests = await listActivationKeyRequestSummaries({ page, pageSize, search, filters });
     return res.status(200).json(requests);
   } catch (error) {
     return next(error);

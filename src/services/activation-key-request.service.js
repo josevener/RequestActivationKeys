@@ -109,37 +109,61 @@ const applySummarySearch = (request, search = {}) => {
   request.input("SearchTextLike", sql.NVarChar(255), normalized.searchText ? `%${normalized.searchText}%` : null);
 };
 
+const normalizeSummaryFilters = (filters = {}) => {
+  const clientRaw = String(filters.client || "").trim();
+  const dateFromRaw = String(filters.dateFrom || "").trim();
+  const dateToRaw = String(filters.dateTo || "").trim();
+
+  return {
+    client: clientRaw.length > 0 ? clientRaw : null,
+    dateFrom: dateFromRaw.length > 0 ? dateFromRaw : null,
+    dateTo: dateToRaw.length > 0 ? dateToRaw : null,
+  };
+};
+
+const applySummaryFilters = (request, filters = {}) => {
+  const normalized = normalizeSummaryFilters(filters);
+  request.input("ClientFilter", sql.NVarChar(255), normalized.client);
+  request.input("DateFrom", sql.VarChar(10), normalized.dateFrom);
+  request.input("DateTo", sql.VarChar(10), normalized.dateTo);
+};
+
 const SUMMARY_FILTER_WHERE_SQL = `
-  WHERE (
-    @SearchText IS NULL
-    OR (@SearchBy = 'request_no' AND rs.RequestNo LIKE @SearchTextLike)
-    OR (@SearchBy = 'client' AND rs.Client LIKE @SearchTextLike)
-    OR (@SearchBy = 'server_license_type' AND rs.ServerLicenseType LIKE @SearchTextLike)
-    OR (@SearchBy = 'add_ons' AND rs.AddOns LIKE @SearchTextLike)
-    OR (@SearchBy = 'status' AND rs.[Status] LIKE @SearchTextLike)
-    OR (@SearchBy = 'created_by' AND rs.CreatedBy LIKE @SearchTextLike)
-    OR (@SearchBy = 'modified_by' AND rs.ModifiedBy LIKE @SearchTextLike)
-    OR (
-      @SearchBy = 'all'
-      AND (
-        rs.RequestNo LIKE @SearchTextLike
-        OR rs.Client LIKE @SearchTextLike
-        OR rs.ServerLicenseType LIKE @SearchTextLike
-        OR rs.AddOns LIKE @SearchTextLike
-        OR rs.[Status] LIKE @SearchTextLike
-        OR rs.CreatedBy LIKE @SearchTextLike
-        OR rs.ModifiedBy LIKE @SearchTextLike
+  WHERE
+    (
+      @SearchText IS NULL
+      OR (@SearchBy = 'request_no' AND rs.RequestNo LIKE @SearchTextLike)
+      OR (@SearchBy = 'client' AND rs.Client LIKE @SearchTextLike)
+      OR (@SearchBy = 'server_license_type' AND rs.ServerLicenseType LIKE @SearchTextLike)
+      OR (@SearchBy = 'add_ons' AND rs.AddOns LIKE @SearchTextLike)
+      OR (@SearchBy = 'status' AND rs.[Status] LIKE @SearchTextLike)
+      OR (@SearchBy = 'created_by' AND rs.CreatedBy LIKE @SearchTextLike)
+      OR (@SearchBy = 'modified_by' AND rs.ModifiedBy LIKE @SearchTextLike)
+      OR (
+        @SearchBy = 'all'
+        AND (
+          rs.RequestNo LIKE @SearchTextLike
+          OR rs.Client LIKE @SearchTextLike
+          OR rs.ServerLicenseType LIKE @SearchTextLike
+          OR rs.AddOns LIKE @SearchTextLike
+          OR rs.[Status] LIKE @SearchTextLike
+          OR rs.CreatedBy LIKE @SearchTextLike
+          OR rs.ModifiedBy LIKE @SearchTextLike
+        )
       )
     )
-  )
+    AND (@ClientFilter IS NULL OR rs.Client = @ClientFilter)
+    AND (@DateFrom IS NULL OR CONVERT(date, rs.[Date]) >= CONVERT(date, @DateFrom))
+    AND (@DateTo IS NULL OR CONVERT(date, rs.[Date]) <= CONVERT(date, @DateTo))
 `;
 
-const listActivationKeyRequestSummaries = async ({ page, pageSize, search }) => {
+const listActivationKeyRequestSummaries = async ({ page, pageSize, search, filters }) => {
   const pool = await getPool();
   const { safePage, safePageSize } = parsePaging({ page, pageSize });
 
   const countRequest = pool.request();
   applySummarySearch(countRequest, search);
+  applySummaryFilters(countRequest, filters);
 
   const countResult = await countRequest.query(`
     ${SUMMARY_DATASET_SQL}
@@ -158,6 +182,7 @@ const listActivationKeyRequestSummaries = async ({ page, pageSize, search }) => 
     .input("offset", sql.Int, offset)
     .input("pageSize", sql.Int, safePageSize);
   applySummarySearch(listRequest, search);
+  applySummaryFilters(listRequest, filters);
 
   const result = await listRequest.query(`
     ${SUMMARY_DATASET_SQL}

@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Menu,
   RefreshCw,
   Search,
   SquareArrowOutUpRight,
@@ -45,6 +46,10 @@ type SummaryResponse = {
   pagination: PaginationInfo;
 };
 
+type SummaryFilterOptionsResponse = {
+  client?: string[];
+};
+
 type SearchByValue =
   | "request_no"
   | "client"
@@ -55,8 +60,26 @@ type SearchByValue =
   | "modified_by"
   | "all";
 
+type DateRangePresetValue =
+  | "all_dates_1990_2099"
+  | "current_date"
+  | "current_week"
+  | "current_month"
+  | "current_year"
+  | "previous_date"
+  | "previous_week"
+  | "previous_month"
+  | "previous_year"
+  | "last_7_days"
+  | "last_30_days"
+  | "last_3_months"
+  | "last_6_months"
+  | "last_12_months"
+  | "custom_date";
+
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const DEFAULT_SEARCH_BY: SearchByValue = "request_no";
+const DEFAULT_DATE_RANGE_PRESET: DateRangePresetValue = "last_30_days";
 
 const SEARCH_BY_OPTIONS: Array<{ value: SearchByValue; label: string }> = [
   { value: "request_no", label: "Request No" },
@@ -68,6 +91,120 @@ const SEARCH_BY_OPTIONS: Array<{ value: SearchByValue; label: string }> = [
   { value: "modified_by", label: "Modified By" },
   { value: "all", label: "All Fields" },
 ];
+
+const DATE_RANGE_OPTIONS: Array<{ value: DateRangePresetValue; label: string }> = [
+  { value: "all_dates_1990_2099", label: "All Dates" },
+  { value: "current_date", label: "Current Date" },
+  { value: "current_week", label: "Current Week" },
+  { value: "current_month", label: "Current Month" },
+  { value: "current_year", label: "Current Year" },
+  { value: "previous_date", label: "Previous Date" },
+  { value: "previous_week", label: "Previous Week" },
+  { value: "previous_month", label: "Previous Month" },
+  { value: "previous_year", label: "Previous Year" },
+  { value: "last_7_days", label: "Last 7 Days" },
+  { value: "last_30_days", label: "Last 30 Days" },
+  { value: "last_3_months", label: "Last 3 Months" },
+  { value: "last_6_months", label: "Last 6 Months" },
+  { value: "last_12_months", label: "Last 12 Months" },
+  { value: "custom_date", label: "Custom Date" },
+];
+
+const toIsoDate = (value: Date) => {
+  const local = new Date(value);
+  local.setHours(0, 0, 0, 0);
+  const year = local.getFullYear();
+  const month = String(local.getMonth() + 1).padStart(2, "0");
+  const day = String(local.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const addDays = (value: Date, days: number) => {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const addMonths = (value: Date, months: number) => {
+  const next = new Date(value);
+  next.setMonth(next.getMonth() + months);
+  return next;
+};
+
+const getStartOfWeek = (value: Date) => {
+  const day = value.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  return addDays(value, offset);
+};
+
+const getEndOfWeek = (value: Date) => addDays(getStartOfWeek(value), 6);
+
+const getStartOfMonth = (value: Date) => new Date(value.getFullYear(), value.getMonth(), 1);
+const getEndOfMonth = (value: Date) => new Date(value.getFullYear(), value.getMonth() + 1, 0);
+const getStartOfYear = (value: Date) => new Date(value.getFullYear(), 0, 1);
+const getEndOfYear = (value: Date) => new Date(value.getFullYear(), 11, 31);
+
+const getPresetDateRange = (preset: DateRangePresetValue): { from: string; to: string } | null => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  switch (preset) {
+    case "all_dates_1990_2099":
+      return { from: "1990-01-01", to: "2099-12-31" };
+    case "current_date":
+      return { from: toIsoDate(today), to: toIsoDate(today) };
+    case "current_week": {
+      const from = getStartOfWeek(today);
+      const to = getEndOfWeek(today);
+      return { from: toIsoDate(from), to: toIsoDate(to) };
+    }
+    case "current_month": {
+      const from = getStartOfMonth(today);
+      const to = getEndOfMonth(today);
+      return { from: toIsoDate(from), to: toIsoDate(to) };
+    }
+    case "current_year": {
+      const from = getStartOfYear(today);
+      const to = getEndOfYear(today);
+      return { from: toIsoDate(from), to: toIsoDate(to) };
+    }
+    case "previous_date": {
+      const previous = addDays(today, -1);
+      return { from: toIsoDate(previous), to: toIsoDate(previous) };
+    }
+    case "previous_week": {
+      const previousWeekDate = addDays(today, -7);
+      const from = getStartOfWeek(previousWeekDate);
+      const to = getEndOfWeek(previousWeekDate);
+      return { from: toIsoDate(from), to: toIsoDate(to) };
+    }
+    case "previous_month": {
+      const previousMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const from = getStartOfMonth(previousMonthDate);
+      const to = getEndOfMonth(previousMonthDate);
+      return { from: toIsoDate(from), to: toIsoDate(to) };
+    }
+    case "previous_year": {
+      const previousYearDate = new Date(today.getFullYear() - 1, 0, 1);
+      const from = getStartOfYear(previousYearDate);
+      const to = getEndOfYear(previousYearDate);
+      return { from: toIsoDate(from), to: toIsoDate(to) };
+    }
+    case "last_7_days":
+      return { from: toIsoDate(addDays(today, -6)), to: toIsoDate(today) };
+    case "last_30_days":
+      return { from: toIsoDate(addDays(today, -29)), to: toIsoDate(today) };
+    case "last_3_months":
+      return { from: toIsoDate(addMonths(today, -3)), to: toIsoDate(today) };
+    case "last_6_months":
+      return { from: toIsoDate(addMonths(today, -6)), to: toIsoDate(today) };
+    case "last_12_months":
+      return { from: toIsoDate(addMonths(today, -12)), to: toIsoDate(today) };
+    case "custom_date":
+    default:
+      return null;
+  }
+};
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -95,6 +232,12 @@ function RequestOverviewPage() {
 
   const [searchBy, setSearchBy] = useState<SearchByValue>(DEFAULT_SEARCH_BY);
   const [searchText, setSearchText] = useState("");
+  const [clientFilter, setClientFilter] = useState("all");
+  const initialDateRange = getPresetDateRange(DEFAULT_DATE_RANGE_PRESET);
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePresetValue>(DEFAULT_DATE_RANGE_PRESET);
+  const [dateFrom, setDateFrom] = useState(initialDateRange?.from || "");
+  const [dateTo, setDateTo] = useState(initialDateRange?.to || "");
+  const [clientOptions, setClientOptions] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -102,11 +245,22 @@ function RequestOverviewPage() {
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
 
   const buildSummaryParams = useCallback(
-    (nextPage: number, nextPageSize: number, nextSearchBy: SearchByValue, nextSearchText: string) => ({
+    (
+      nextPage: number,
+      nextPageSize: number,
+      nextSearchBy: SearchByValue,
+      nextSearchText: string,
+      nextClient: string,
+      nextDateFrom: string,
+      nextDateTo: string
+    ) => ({
       page: nextPage,
       page_size: nextPageSize,
       search_by: nextSearchBy,
       ...(nextSearchText.trim() ? { search_text: nextSearchText.trim() } : {}),
+      ...(nextClient && nextClient !== "all" ? { client: nextClient } : {}),
+      ...(nextDateFrom ? { date_from: nextDateFrom } : {}),
+      ...(nextDateTo ? { date_to: nextDateTo } : {}),
     }),
     []
   );
@@ -117,19 +271,31 @@ function RequestOverviewPage() {
       nextPageSize: number,
       nextSearchBy: SearchByValue,
       nextSearchText: string,
+      nextClient: string,
+      nextDateFrom: string,
+      nextDateTo: string,
       silent = false
     ) => {
       try {
         if (silent) {
           setIsRefreshing(true);
-        } else {
+        } 
+        else {
           setLoading(true);
         }
 
         setError("");
 
         const response = await api.get<SummaryResponse>("/api/activation-key-requests/summary", {
-          params: buildSummaryParams(nextPage, nextPageSize, nextSearchBy, nextSearchText),
+          params: buildSummaryParams(
+            nextPage,
+            nextPageSize,
+            nextSearchBy,
+            nextSearchText,
+            nextClient,
+            nextDateFrom,
+            nextDateTo
+          ),
         });
 
         const payload = response.data;
@@ -163,9 +329,28 @@ function RequestOverviewPage() {
     [buildSummaryParams]
   );
 
+  const fetchClientOptions = useCallback(async () => {
+    try {
+      const response = await api.get<SummaryFilterOptionsResponse>(
+        "/api/activation-key-requests/summary/filter-options"
+      );
+      const clients = Array.isArray(response.data?.client)
+        ? response.data.client.filter((value): value is string => Boolean(value && value.trim()))
+        : [];
+      setClientOptions(clients);
+    } 
+    catch (_error) {
+      setClientOptions([]);
+    }
+  }, []);
+
   useEffect(() => {
-    void fetchRows(1, 20, DEFAULT_SEARCH_BY, "");
+    void fetchRows(1, 20, DEFAULT_SEARCH_BY, "", "all", initialDateRange?.from || "", initialDateRange?.to || "");
   }, [fetchRows]);
+
+  useEffect(() => {
+    void fetchClientOptions();
+  }, [fetchClientOptions]);
 
   const disableActions = loading || isRefreshing;
   const showingFrom = rows.length === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -186,8 +371,13 @@ function RequestOverviewPage() {
       return;
     }
 
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setError("From date must be on or before To date");
+      return;
+    }
+
     setPage(1);
-    void fetchRows(1, pageSize, searchBy, searchText, true);
+    void fetchRows(1, pageSize, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
   };
 
   const handleClearSearch = () => {
@@ -195,10 +385,18 @@ function RequestOverviewPage() {
       return;
     }
 
+    const defaultRange = getPresetDateRange(DEFAULT_DATE_RANGE_PRESET);
+    const nextDateFrom = defaultRange?.from || "";
+    const nextDateTo = defaultRange?.to || "";
+
     setSearchBy(DEFAULT_SEARCH_BY);
     setSearchText("");
+    setClientFilter("all");
+    setDateRangePreset(DEFAULT_DATE_RANGE_PRESET);
+    setDateFrom(nextDateFrom);
+    setDateTo(nextDateTo);
     setPage(1);
-    void fetchRows(1, pageSize, DEFAULT_SEARCH_BY, "", true);
+    void fetchRows(1, pageSize, DEFAULT_SEARCH_BY, "", "all", nextDateFrom, nextDateTo, true);
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -212,7 +410,7 @@ function RequestOverviewPage() {
     }
 
     setPage(boundedPage);
-    void fetchRows(boundedPage, pageSize, searchBy, searchText, true);
+    void fetchRows(boundedPage, pageSize, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
   };
 
   const handlePageSizeChange = (nextPageSize: number) => {
@@ -222,10 +420,20 @@ function RequestOverviewPage() {
 
     setPage(1);
     setPageSize(nextPageSize);
-    void fetchRows(1, nextPageSize, searchBy, searchText, true);
+    void fetchRows(1, nextPageSize, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
   };
 
   const pageLabel = useMemo(() => `${page} / ${Math.max(1, totalPages)}`, [page, totalPages]);
+
+  const handleDateRangePresetChange = (nextPreset: DateRangePresetValue) => {
+    setDateRangePreset(nextPreset);
+    const range = getPresetDateRange(nextPreset);
+
+    if (range) {
+      setDateFrom(range.from);
+      setDateTo(range.to);
+    }
+  };
 
   return (
     <div className="h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
@@ -246,11 +454,11 @@ function RequestOverviewPage() {
                 type="button"
                 variant={searchPanelOpen ? "default" : "outline"}
                 size="icon"
-                className="h-8 w-8 shrink-0"
+                className="h-8 w-8 shrink-0 cursor-pointer"
                 aria-label={searchPanelOpen ? "Close search and actions panel" : "Open search and actions panel"}
                 onClick={() => setSearchPanelOpen((prev) => !prev)}
               >
-                {searchPanelOpen ? <X className="size-4" /> : <Search className="size-4" />}
+                {searchPanelOpen ? <X className="size-4" /> : <Menu className="size-4" />}
               </Button>
             </div>
           </CardHeader>
@@ -261,10 +469,19 @@ function RequestOverviewPage() {
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  void fetchRows(page, pageSize, searchBy, searchText, true);
+                  void fetchRows(
+                    page,
+                    pageSize,
+                    searchBy,
+                    searchText,
+                    clientFilter,
+                    dateFrom,
+                    dateTo,
+                    true
+                  );
                 }}
                 disabled={disableActions}
-                className="h-8 w-full gap-1.5 text-xs sm:w-auto"
+                className="h-8 w-full gap-1.5 text-xs sm:w-auto cursor-pointer"
               >
                 {isRefreshing ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />}
                 Refresh
@@ -275,16 +492,16 @@ function RequestOverviewPage() {
                 variant="ghost"
                 onClick={logout}
                 disabled={disableActions}
-                className="h-8 w-full gap-1.5 bg-red-500 text-xs text-white hover:bg-red-600 hover:text-white sm:w-auto"
+                className="h-8 w-full gap-1.5 bg-red-500 text-xs text-white hover:bg-red-600 hover:text-white sm:w-auto cursor-pointer"
               >
                 <LogOut className="size-3.5" />
                 Logout
               </Button>
             </div>
 
-            <div className="text-xs font-medium text-slate-700">Search by</div>
+            <div className="text-xs font-medium text-slate-700">Filters</div>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[190px_minmax(0,1fr)_96px_96px]">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[160px_minmax(0,1fr)_200px_170px_120px_120px_96px_96px]">
               <div className="sm:col-span-1">
                 <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="search-by">
                   Field
@@ -323,12 +540,85 @@ function RequestOverviewPage() {
                 />
               </div>
 
+              <div className="sm:col-span-1">
+                <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="date-range-preset">
+                  Date Range
+                </label>
+                <select
+                  id="date-range-preset"
+                  value={dateRangePreset}
+                  onChange={(event) => handleDateRangePresetChange(event.target.value as DateRangePresetValue)}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  disabled={disableActions}
+                >
+                  {DATE_RANGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-1">
+                <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="client-filter">
+                  Client
+                </label>
+                <select
+                  id="client-filter"
+                  value={clientFilter}
+                  onChange={(event) => setClientFilter(event.target.value)}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  disabled={disableActions}
+                >
+                  <option value="all">All Clients</option>
+                  {clientOptions.map((client) => (
+                    <option key={client} value={client}>
+                      {client}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-1">
+                <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="date-from">
+                  From
+                </label>
+                <input
+                  id="date-from"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => {
+                    setDateRangePreset("custom_date");
+                    setDateFrom(event.target.value);
+                  }}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  disabled={disableActions}
+                />
+              </div>
+
+              <div className="sm:col-span-1">
+                <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="date-to">
+                  To
+                </label>
+                <input
+                  id="date-to"
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => {
+                    setDateRangePreset("custom_date");
+                    setDateTo(event.target.value);
+                  }}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  disabled={disableActions}
+                />
+              </div>
+
               <div className="self-end sm:col-span-1">
                 <Button
                   type="button"
                   onClick={handleSearch}
                   disabled={disableActions}
-                  className="h-8 w-full gap-1.5 text-xs"
+                  className="h-8 w-full gap-1.5 text-xs cursor-pointer"
                 >
                   <Search className="size-3.5" />
                   Search
@@ -341,7 +631,7 @@ function RequestOverviewPage() {
                   variant="outline"
                   onClick={handleClearSearch}
                   disabled={disableActions}
-                  className="h-8 w-full gap-1.5 text-xs"
+                  className="h-8 w-full gap-1.5 text-xs cursor-pointer"
                 >
                   <X className="size-3.5" />
                   Clear
@@ -358,7 +648,7 @@ function RequestOverviewPage() {
           </Alert>
         ) : null}
 
-        <Card className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-slate-200">
+        <Card className="mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-slate-200">
           <CardContent className="flex min-h-0 flex-1 flex-col p-0">
             <div className="min-h-0 flex-1 overflow-auto">
               {loading && rows.length === 0 ? (
@@ -440,7 +730,7 @@ function RequestOverviewPage() {
               )}
             </div>
 
-            <div className="flex shrink-0 flex-col gap-1.5 border-t border-slate-100 sm:flex-row sm:items-center sm:justify-between sm:px-3">
+            <div className="flex shrink-0 flex-col gap-1.5 border-t border-slate-100 sm:flex-row sm:items-center sm:justify-between px-3">
               <p className="text-[11px] text-muted-foreground">
                 Showing {showingFrom}-{showingTo} of {totalItems}
               </p>
