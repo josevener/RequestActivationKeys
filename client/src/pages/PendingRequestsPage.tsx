@@ -627,7 +627,7 @@ function PendingRequestsPage() {
                     void processRequests("approve", approvableSelectedIds);
                   }}
                   disabled={disableActions || approvableSelectedIds.length === 0}
-                  className="h-8 gap-1.5 px-2 text-xs"
+                  className="h-8 w-9 gap-1.5 px-2 text-xs sm:w-[154px] sm:justify-center"
                   aria-label="Approve selected"
                   title="Approve selected"
                 >
@@ -648,7 +648,7 @@ function PendingRequestsPage() {
                     void processRequests("disapprove", disapprovableSelectedIds);
                   }}
                   disabled={disableActions || disapprovableSelectedIds.length === 0}
-                  className="h-8 gap-1.5 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                  className="h-8 w-9 gap-1.5 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:w-[154px] sm:justify-center"
                   aria-label="Disapprove selected"
                   title="Disapprove selected"
                 >
@@ -716,6 +716,9 @@ function PendingRequestsPage() {
                         />
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Actions
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Activation Key
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
@@ -775,9 +778,6 @@ function PendingRequestsPage() {
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Status
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
-                        Actions
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -798,6 +798,47 @@ function PendingRequestsPage() {
                               disabled={disableActions}
                               className="size-4 accent-slate-900"
                             />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={disableActions || row.FilingStatusId !== 1}
+                                onClick={() => {
+                                  void processRequests("approve", [row.RequestId]);
+                                }}
+                                className="h-7 w-7 gap-1 px-2 text-[11px] sm:w-[104px] sm:justify-center"
+                                aria-label={`Approve request ${row.RequestId}`}
+                                title="Approve"
+                              >
+                                {processingAction === "approve" ? (
+                                  <Spinner className="size-3.5" />
+                                ) : (
+                                  <ThumbsUp className="size-3.5" />
+                                )}
+                                <span className="hidden sm:inline">Approve</span>
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={disableActions || row.FilingStatusId !== 1}
+                                onClick={() => {
+                                  void processRequests("disapprove", [row.RequestId]);
+                                }}
+                                className="h-7 w-7 gap-1 px-2 text-[11px] border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:w-[104px] sm:justify-center"
+                                aria-label={`Disapprove request ${row.RequestId}`}
+                                title="Disapprove"
+                              >
+                                {processingAction === "disapprove" ? (
+                                  <Spinner className="size-3.5" />
+                                ) : (
+                                  <ThumbsDown className="size-3.5" />
+                                )}
+                                <span className="hidden sm:inline">Disapprove</span>
+                              </Button>
+                            </div>
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <TruncatedText value={row.ActivationKey} maxWidthClass="max-w-[180px]" />
@@ -868,47 +909,6 @@ function PendingRequestsPage() {
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <TruncatedText value={row.Status} maxWidthClass="max-w-[130px]" />
-                          </td>
-                          <td className="px-2.5 py-2 md:px-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={disableActions || row.FilingStatusId !== 1}
-                                onClick={() => {
-                                  void processRequests("approve", [row.RequestId]);
-                                }}
-                                className="h-7 gap-1 px-2 text-[11px]"
-                                aria-label={`Approve request ${row.RequestId}`}
-                                title="Approve"
-                              >
-                                {processingAction === "approve" ? (
-                                  <Spinner className="size-3.5" />
-                                ) : (
-                                  <ThumbsUp className="size-3.5" />
-                                )}
-                                <span className="hidden sm:inline">Approve</span>
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={disableActions || row.FilingStatusId !== 1}
-                                onClick={() => {
-                                  void processRequests("disapprove", [row.RequestId]);
-                                }}
-                                className="h-7 gap-1 px-2 text-[11px] border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-                                aria-label={`Disapprove request ${row.RequestId}`}
-                                title="Disapprove"
-                              >
-                                {processingAction === "disapprove" ? (
-                                  <Spinner className="size-3.5" />
-                                ) : (
-                                  <ThumbsDown className="size-3.5" />
-                                )}
-                                <span className="hidden sm:inline">Disapprove</span>
-                              </Button>
-                            </div>
                           </td>
                         </tr>
                       );
