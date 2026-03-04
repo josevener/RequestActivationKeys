@@ -38,7 +38,8 @@ function readStoredUser(): AuthUser | null {
 
   try {
     return JSON.parse(raw) as AuthUser;
-  } catch {
+  } 
+  catch {
     localStorage.removeItem(USER_STORAGE_KEY);
     return null;
   }
@@ -65,7 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(nextUser);
 
       return { ok: true };
-    } catch (error) {
+    } 
+    catch (error) {
       const axiosError = error as AxiosError<{ message?: string }>;
       const message =
         axiosError.response?.data?.message || "Unable to login. Please check your credentials.";

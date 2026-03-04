@@ -1,5 +1,4 @@
-const ALLOWED_USERNAMES = Object.freeze(
-  [
+const ALLOWED_USERNAMES = Object.freeze([
     "jose.rafael", 
     "marvin", 
     "sharlyn", 

@@ -1,6 +1,7 @@
 const { HttpError } = require("../utils/http-error");
 const {
   listActivationKeyRequestSummaries,
+  listActivationKeyRequestSummaryFilterOptions,
   listActivationKeyRequestDetails,
   approveActivationKeyRequests,
 } = require("../services/activation-key-request.service");
@@ -23,11 +24,48 @@ const parsePaging = (req) => {
   return { page, pageSize };
 };
 
+const parseSummarySearch = (req) => {
+  const searchByRaw = String(req.query.search_by || "request_no").trim().toLowerCase();
+  const searchText = String(req.query.search_text || "").trim();
+  const allowed = new Set([
+    "request_no",
+    "client",
+    "server_license_type",
+    "add_ons",
+    "status",
+    "created_by",
+    "modified_by",
+    "all",
+  ]);
+
+  if (!allowed.has(searchByRaw)) {
+    throw new HttpError(
+      400,
+      "search_by must be one of: request_no, client, server_license_type, add_ons, status, created_by, modified_by, all"
+    );
+  }
+
+  return {
+    searchBy: searchByRaw,
+    searchText,
+  };
+};
+
 const listActivationKeyRequestSummariesHandler = async (req, res, next) => {
   try {
     const { page, pageSize } = parsePaging(req);
-    const requests = await listActivationKeyRequestSummaries({ page, pageSize });
+    const search = parseSummarySearch(req);
+    const requests = await listActivationKeyRequestSummaries({ page, pageSize, search });
     return res.status(200).json(requests);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const listActivationKeyRequestSummaryFilterOptionsHandler = async (_req, res, next) => {
+  try {
+    const options = await listActivationKeyRequestSummaryFilterOptions();
+    return res.status(200).json(options);
   } catch (error) {
     return next(error);
   }
@@ -110,6 +148,7 @@ const approveActivationKeyRequestsHandler = async (req, res, next) => {
 
 module.exports = {
   listActivationKeyRequestSummariesHandler,
+  listActivationKeyRequestSummaryFilterOptionsHandler,
   listActivationKeyRequests,
   approveActivationKeyRequestsHandler,
 };
