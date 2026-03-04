@@ -671,6 +671,52 @@ const updateFilingStatus = async ({ request, requestId, filingStatusId }) => {
   return result.recordset[0]?.AffectedRows || 0;
 };
 
+const buildBatchDetailRows = (results, { markSuccessfulAsIgnored = false } = {}) => {
+  const rows = [];
+  let lineNo = 1;
+
+  for (const result of results) {
+    const requestIdLabel = `${result.request_id}`;
+    const baseDetails =
+      Array.isArray(result.details) && result.details.length > 0
+        ? result.details
+        : [
+            {
+              value: requestIdLabel,
+              warning: Array.isArray(result.warnings) ? result.warnings.join("; ") : "",
+              state: result.success ? "Done" : "Failed",
+            },
+          ];
+
+    for (const detail of baseDetails) {
+      const detailValue = detail?.value == null ? "" : String(detail.value).trim();
+      const prefixedValue =
+        detailValue.length > 0 && detailValue !== String(result.request_id)
+          ? `${detailValue}`
+          : requestIdLabel;
+      const detailState = detail?.state == null ? "" : String(detail.state).trim();
+
+      rows.push({
+        line_no: lineNo,
+        value: prefixedValue,
+        warning: detail?.warning == null ? "" : String(detail.warning),
+        state:
+          markSuccessfulAsIgnored && result.success
+            ? "Ignored"
+            : detailState.length > 0
+            ? detailState
+            : result.success
+            ? "Done"
+            : "Failed",
+      });
+
+      lineNo += 1;
+    }
+  }
+
+  return rows;
+};
+
 const approveActivationKeyRequests = async ({ requestIds, userId }) => {
   const parsedUserId = Number.parseInt(userId, 10);
   if (Number.isNaN(parsedUserId)) {
@@ -686,6 +732,8 @@ const approveActivationKeyRequests = async ({ requestIds, userId }) => {
     await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
     started = true;
 
+    const validationResults = [];
+
     for (const requestId of requestIds) {
       const validationRequest = new sql.Request(transaction);
       const validation = await executeValidateRequest({
@@ -694,14 +742,24 @@ const approveActivationKeyRequests = async ({ requestIds, userId }) => {
         userId: parsedUserId,
       });
 
-      if (!validation.success) {
-        throw new HttpError(
-          409,
-          `Approval failed for request_id ${requestId}: ${validation.warnings.join("; ")}`,
-          validation.details
-        );
-      }
+      validationResults.push({
+        request_id: requestId,
+        success: validation.success,
+        warnings: validation.warnings,
+        details: validation.details,
+      });
+    }
 
+    if (validationResults.some((item) => !item.success)) {
+      throw new HttpError(
+        409,
+        "Approval failed for one or more selected requests",
+        buildBatchDetailRows(validationResults)
+      );
+    }
+
+    for (const validation of validationResults) {
+      const requestId = validation.request_id;
       const updateRequest = new sql.Request(transaction);
       const affectedRows = await updateFilingStatus({
         request: updateRequest,
@@ -709,27 +767,33 @@ const approveActivationKeyRequests = async ({ requestIds, userId }) => {
         filingStatusId: 2,
       });
 
-      if (affectedRows === 0) {
-        throw new HttpError(
-          409,
-          `Approval failed for request_id ${requestId}: Request is no longer pending`,
-          [
-            {
-              line_no: 1,
-              value: String(requestId),
-              warning: "Request is no longer pending",
-              state: "Failed",
-            },
-          ]
-        );
-      }
-
       approvalResults.push({
         request_id: requestId,
-        success: true,
-        warnings: validation.warnings,
-        details: validation.details,
+        success: affectedRows > 0,
+        warnings:
+          affectedRows > 0
+            ? validation.warnings
+            : ["Request is no longer pending and cannot be approved"],
+        details:
+          affectedRows > 0
+            ? validation.details
+            : [
+                {
+                  line_no: 1,
+                  value: String(requestId),
+                  warning: "Request is no longer pending and cannot be approved",
+                  state: "Failed",
+                },
+              ],
       });
+    }
+
+    if (approvalResults.some((item) => !item.success)) {
+      throw new HttpError(
+        409,
+        "Approval failed for one or more selected requests",
+        buildBatchDetailRows(approvalResults, { markSuccessfulAsIgnored: true })
+      );
     }
 
     await transaction.commit();
@@ -790,21 +854,14 @@ const disapproveActivationKeyRequests = async ({ requestIds, userId }) => {
           },
         ],
       });
+    }
 
-      if (!success) {
-        throw new HttpError(
-          409,
-          `Disapproval failed for request_id ${requestId}: Request is no longer pending`,
-          [
-            {
-              line_no: 1,
-              value: String(requestId),
-              warning: "Request is no longer pending and cannot be disapproved",
-              state: "Failed",
-            },
-          ]
-        );
-      }
+    if (disapprovalResults.some((item) => !item.success)) {
+      throw new HttpError(
+        409,
+        "Disapproval failed for one or more selected requests",
+        buildBatchDetailRows(disapprovalResults, { markSuccessfulAsIgnored: true })
+      );
     }
 
     await transaction.commit();

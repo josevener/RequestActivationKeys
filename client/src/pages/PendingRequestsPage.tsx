@@ -158,7 +158,7 @@ function flattenSuccessActionRows(payload: ActionApiResponse): ActionResultRow[]
     itemRows.forEach((itemRow) => {
       rows.push({
         line_no: rows.length + 1,
-        value: itemRow.value || (result.request_id ? `Request ID ${result.request_id}` : ""),
+        value: itemRow.value || (result.request_id ? `${result.request_id}` : ""),
         warning: itemRow.warning,
         state: itemRow.state,
       });
