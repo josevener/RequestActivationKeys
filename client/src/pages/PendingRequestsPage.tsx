@@ -31,13 +31,21 @@ type PendingRequest = {
   RegisteredName: string | null;
   Branch: string | null;
   TIN: string | null;
+  SSS: string | null;
+  PHIC: string | null;
   DaysTrial: number;
   EmployeeCount: number;
   IsPermanent: boolean;
   IsUnlimitedEmployeeCount: boolean;
   RequestCode: string | null;
+  ServerId: string | null;
+  System: string | null;
   OptimizationDate: string | null;
   SystemEdition: string | null;
+  AddOns: string | null;
+  KeyType: string | null;
+  DateApproved: string | null;
+  ApprovedBy: string | null;
   Status?: string | null;
   FilingStatusId?: number;
 };
@@ -118,6 +126,19 @@ function formatDate(value: string | null) {
   }
 
   return date.toLocaleDateString();
+}
+
+function formatDateTimeOrDate(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
 }
 
 function formatDateTime(value: string | null) {
@@ -688,7 +709,7 @@ function PendingRequestsPage() {
                   No activation key request records.
                 </div>
               ) : (
-                <table className="w-full min-w-[1360px] border-collapse text-[11px] md:min-w-[1500px]">
+                <table className="w-full min-w-[1900px] border-collapse text-[11px] md:min-w-[2100px]">
                   <thead>
                     <tr className="text-slate-600">
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
@@ -702,9 +723,6 @@ function PendingRequestsPage() {
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Activation Key
-                      </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
-                        Status
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Registered Name
@@ -731,10 +749,37 @@ function PendingRequestsPage() {
                         Request Code
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
-                        Optimization Date
+                        Server Id
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        System
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         System Edition
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Add Ons
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Key Type
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        SSS
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        PHIC
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Date Approved
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Approved By
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Optimization Date
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Status
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Actions
@@ -762,9 +807,6 @@ function PendingRequestsPage() {
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <TruncatedText value={row.ActivationKey} maxWidthClass="max-w-[180px]" />
-                          </td>
-                          <td className="px-2.5 py-2 md:px-3">
-                            <TruncatedText value={row.Status} maxWidthClass="max-w-[130px]" />
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <TruncatedText value={row.RegisteredName} maxWidthClass="max-w-[260px]" />
@@ -801,10 +843,37 @@ function PendingRequestsPage() {
                             <TruncatedText value={row.RequestCode} maxWidthClass="max-w-[220px]" />
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
-                            <TruncatedText value={formatDate(row.OptimizationDate)} maxWidthClass="max-w-[130px]" />
+                            <TruncatedText value={row.ServerId} maxWidthClass="max-w-[220px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.System} maxWidthClass="max-w-[180px]" />
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <TruncatedText value={row.SystemEdition} maxWidthClass="max-w-[180px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.AddOns} maxWidthClass="max-w-[160px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.KeyType} maxWidthClass="max-w-[120px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.SSS} maxWidthClass="max-w-[150px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.PHIC} maxWidthClass="max-w-[150px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={formatDateTimeOrDate(row.DateApproved)} maxWidthClass="max-w-[180px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.ApprovedBy} maxWidthClass="max-w-[160px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={formatDate(row.OptimizationDate)} maxWidthClass="max-w-[130px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={row.Status} maxWidthClass="max-w-[130px]" />
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <div className="flex flex-wrap items-center gap-2">

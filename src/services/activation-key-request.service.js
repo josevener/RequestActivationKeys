@@ -463,7 +463,11 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
         ard.RegInfo AS RegInfoRaw,
         NULLIF(LTRIM(RTRIM(ard.Branch)), '') AS Branch,
         ard.TIN,
+        ard.SSSno AS SSS,
+        ard.PHIC,
         ard.RequestCode,
+        ard.ServerId,
+        s.Name AS [System],
         RegisteredName = COALESCE(NULLIF(ard.RegisteredName, ''), c.Name),
         ard.FilingStatusId,
         [Status] = CASE ard.FilingStatusId
@@ -472,14 +476,28 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
           WHEN 3 THEN 'Disapproved'
           ELSE ''
         END,
+        AddOns = CASE
+          WHEN ISNULL(ard.AddOnsId, 0) = 0 THEN 'JPS'
+          WHEN ard.AddOnsId = 1 THEN 'ESS'
+          WHEN ard.AddOnsId = 2 THEN 'Import Text File'
+          WHEN ard.AddOnsId = 3 THEN 'Import Excel'
+          ELSE COALESCE(NULLIF(sa.Name, ''), 'OTHERS')
+        END,
+        KeyType = COALESCE(CAST(kt.KeyType AS NVARCHAR(100)), CAST(ard.KeyType AS NVARCHAR(100))),
         ard.DaysTrial,
         ard.EmployeeCount,
         ard.IsPermanent,
         ard.IsUnlimitedEmployeeCount,
+        DateApproved = ard.ApprovalDate,
+        ApprovedBy = su.UserName,
         ard.OptimizationDate,
         se.Name AS SystemEdition
       FROM tblActivationKeyRequestDetails ard
       LEFT JOIN tblSystemEditions se ON se.Id = ard.SystemEditionId
+      LEFT JOIN tblSystems s ON s.Id = ard.SystemId
+      LEFT JOIN tblSystemAddOns sa ON sa.Id = ard.AddOnsId
+      LEFT JOIN tblKeyTypes kt ON kt.Id = ard.KeyType
+      LEFT JOIN tblSecurityUsers su ON su.Id = ard.ApprovedById
       LEFT JOIN tblClients c ON c.Id = ard.ClientId
       WHERE ${whereClause}
       ORDER BY ard.Id DESC
@@ -523,7 +541,11 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
       ard.RegInfo AS RegInfoRaw,
       NULLIF(LTRIM(RTRIM(ard.Branch)), '') AS Branch,
       ard.TIN,
+      ard.SSSno AS SSS,
+      ard.PHIC,
       ard.RequestCode,
+      ard.ServerId,
+      s.Name AS [System],
       RegisteredName = COALESCE(NULLIF(ard.RegisteredName, ''), c.Name),
       ard.FilingStatusId,
       [Status] = CASE ard.FilingStatusId
@@ -532,14 +554,28 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
         WHEN 3 THEN 'Disapproved'
         ELSE ''
       END,
+      AddOns = CASE
+        WHEN ISNULL(ard.AddOnsId, 0) = 0 THEN 'JPS'
+        WHEN ard.AddOnsId = 1 THEN 'ESS'
+        WHEN ard.AddOnsId = 2 THEN 'Import Text File'
+        WHEN ard.AddOnsId = 3 THEN 'Import Excel'
+        ELSE COALESCE(NULLIF(sa.Name, ''), 'OTHERS')
+      END,
+      KeyType = COALESCE(CAST(kt.KeyType AS NVARCHAR(100)), CAST(ard.KeyType AS NVARCHAR(100))),
       ard.DaysTrial,
       ard.EmployeeCount,
       ard.IsPermanent,
       ard.IsUnlimitedEmployeeCount,
+      DateApproved = ard.ApprovalDate,
+      ApprovedBy = su.UserName,
       ard.OptimizationDate,
       se.Name AS SystemEdition
     FROM tblActivationKeyRequestDetails ard
     LEFT JOIN tblSystemEditions se ON se.Id = ard.SystemEditionId
+    LEFT JOIN tblSystems s ON s.Id = ard.SystemId
+    LEFT JOIN tblSystemAddOns sa ON sa.Id = ard.AddOnsId
+    LEFT JOIN tblKeyTypes kt ON kt.Id = ard.KeyType
+    LEFT JOIN tblSecurityUsers su ON su.Id = ard.ApprovedById
     LEFT JOIN tblClients c ON c.Id = ard.ClientId
     WHERE ${whereClause}
     ORDER BY ard.Id DESC
