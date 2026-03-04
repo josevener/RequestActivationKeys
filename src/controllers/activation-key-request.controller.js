@@ -1,0 +1,115 @@
+const { HttpError } = require("../utils/http-error");
+const {
+  listActivationKeyRequestSummaries,
+  listActivationKeyRequestDetails,
+  approveActivationKeyRequests,
+} = require("../services/activation-key-request.service");
+
+const parsePaging = (req) => {
+  const rawPage = req.query.page;
+  const rawPageSize = req.query.page_size;
+
+  const page = rawPage === undefined ? 1 : Number.parseInt(String(rawPage), 10);
+  const pageSize = rawPageSize === undefined ? 20 : Number.parseInt(String(rawPageSize), 10);
+
+  if (Number.isNaN(page) || page < 1) {
+    throw new HttpError(400, "page must be a positive integer");
+  }
+
+  if (Number.isNaN(pageSize) || pageSize < 1 || pageSize > 100) {
+    throw new HttpError(400, "page_size must be an integer between 1 and 100");
+  }
+
+  return { page, pageSize };
+};
+
+const listActivationKeyRequestSummariesHandler = async (req, res, next) => {
+  try {
+    const { page, pageSize } = parsePaging(req);
+    const requests = await listActivationKeyRequestSummaries({ page, pageSize });
+    return res.status(200).json(requests);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const listActivationKeyRequests = async (req, res, next) => {
+  const status = String(req.query.status || "").trim().toLowerCase();
+  const rawRequestId = req.query.request_id;
+  if (!["pending", "all"].includes(status)) {
+    return next(new HttpError(400, "status must be either pending or all"));
+  }
+
+  let requestId;
+  if (rawRequestId !== undefined) {
+    requestId = Number.parseInt(String(rawRequestId), 10);
+    if (Number.isNaN(requestId) || requestId < 1) {
+      return next(new HttpError(400, "request_id must be a positive integer"));
+    }
+  }
+
+  try {
+    const { page, pageSize } = parsePaging(req);
+    const requests = await listActivationKeyRequestDetails({
+      status,
+      page,
+      pageSize,
+      requestId,
+    });
+    return res.status(200).json(requests);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const parseRequestIds = (payload) => {
+  const { request_ids: requestIds } = payload || {};
+
+  if (requestIds === undefined) {
+    throw new HttpError(400, "request_ids is required");
+  }
+
+  if (!Array.isArray(requestIds)) {
+    throw new HttpError(400, "request_ids must be an array");
+  }
+
+  if (requestIds.length === 0) {
+    throw new HttpError(400, "request_ids must not be empty");
+  }
+
+  const parsed = requestIds.map((id) => Number.parseInt(id, 10));
+
+  if (parsed.some((id) => Number.isNaN(id) || id <= 0)) {
+    throw new HttpError(400, "request_ids must contain positive integer values only");
+  }
+
+  const uniqueCount = new Set(parsed).size;
+  if (uniqueCount !== parsed.length) {
+    throw new HttpError(400, "request_ids must not contain duplicate values");
+  }
+
+  return parsed;
+};
+
+const approveActivationKeyRequestsHandler = async (req, res, next) => {
+  try {
+    const requestIds = parseRequestIds(req.body);
+    const result = await approveActivationKeyRequests({
+      requestIds,
+      userId: req.user && req.user.id,
+    });
+
+    return res.status(200).json({
+      message: "Activation key request(s) approved successfully",
+      ...result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+module.exports = {
+  listActivationKeyRequestSummariesHandler,
+  listActivationKeyRequests,
+  approveActivationKeyRequestsHandler,
+};

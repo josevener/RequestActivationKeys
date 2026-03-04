@@ -1,0 +1,445 @@
+# AI_AGENT.md
+
+**Project:** Web Approval App for Activation Key Requests
+**Architecture:** React (Vite) + Node.js + Existing Main System Database
+**Auth Source:** `tblSecurityUsers` (existing DB)
+**Access Scope:** Marvin, Sharlyn, Diana only
+**Database:** Reuse existing schema and approval logic (no migrations)
+
+---
+
+## 1. Purpose of This Agent
+
+This AI Agent acts as a technical implementation guide and validation assistant for building a **standalone web approval module** for Activation Key Requests that:
+
+* Uses the same database as the main system
+* Uses the same user credentials (LDAP already handled on login page)
+* Is accessible outside VPN
+* Is mobile-friendly
+* Does NOT allow create/edit
+* Strictly mirrors main system approval logic
+
+---
+
+## 2. System Architecture Overview
+
+```
+[ React (Vite) Frontend ]
+        |
+        | REST API
+        v
+[ Node.js Backend ]
+        |
+        | Existing Main System DB
+        v
+[ SQL Server ]
+```
+
+### Principles
+
+* No new DB schema.
+* No behavior divergence from main system.
+* No business rule reimplementation if existing stored procedure exists.
+* Backend must reuse the same approval query / SP used in main system.
+
+---
+
+## 3. Database Source of Truth
+
+### Core Tables Identified
+
+#### `tblActivationKeyRequests`
+
+Header table.
+
+```
+Id
+RequestNo
+CompanyId
+ClientID
+Reason
+DateRequested
+CreatedById
+CreationDate
+ModifiedById
+ModificationDate
+ServerLicenseTypeId
+DateAndTimeRequested
+```
+
+#### `tblActivationKeyRequestDetails`
+
+Main approval-relevant fields.
+
+```
+Id
+KeyRequestId
+SystemEditionId
+EmployeeCount
+DaysTrial
+IsPermanent
+IsUnlimitedEmployeeCount
+OptimizationDate
+ApprovedById
+ApprovalDate
+Active
+...
+```
+
+#### Supporting Tables
+
+* `tblSecurityUsers`
+* `tblClientActivationKeys`
+* `tblLicenses`
+* `tblServerLicenseTypes`
+
+---
+
+## 4. Authentication & Authorization Rules
+
+### Authentication
+
+* Validate username/password against `tblSecurityUsers`.
+* Must reuse same hashing/comparison logic as main system.
+* If LDAP already implemented in existing login module, replicate that logic.
+
+### Authorization
+
+Allow ONLY:
+
+```
+Marvin
+Sharlyn
+Diana
+```
+
+Even if credentials valid:
+
+```
+IF username NOT IN allowlist
+→ Return 403 Forbidden
+```
+
+---
+
+## 5. Backend Specification
+
+### Base Route
+
+```
+/api/activation-key-requests
+```
+
+---
+
+### 5.1 GET Pending Requests
+
+```
+GET /api/activation-key-requests?status=pending
+```
+
+#### Behavior
+
+* Return only requests not yet approved.
+* Must match main system's definition of "pending".
+* Join header + details table as needed.
+* Only return required fields.
+
+#### Response Shape
+
+```json
+[
+  {
+    "request_id": 101,
+    "days_trial": 14,
+    "employee_count": 50,
+    "permanent": true,
+    "unli_emp": false,
+    "opt_date": "2026-03-03",
+    "system_edition": "System X"
+  }
+]
+```
+
+#### Required Fields (Strictly These Only)
+
+* DaysTrial
+* EmployeeCount
+* IsPermanent
+* IsUnlimitedEmployeeCount
+* OptimizationDate
+* SystemEdition
+
+No editing fields.
+No internal flags.
+No audit fields.
+
+---
+
+### 5.2 Approve Endpoint
+
+```
+POST /api/activation-key-requests/approve
+```
+
+#### Request Body
+
+```json
+{
+  "request_ids": [101, 102, 103]
+}
+```
+
+#### Validation
+
+| Case                | Result |
+| ------------------- | ------ |
+| Missing request_ids | 400    |
+| Empty array         | 400    |
+| Non-array           | 400    |
+
+---
+
+### Approval Logic
+
+Backend MUST:
+
+1. Locate approval logic in main system.
+
+   * Stored procedure?
+   * Transaction block?
+   * Direct update?
+2. Reuse exact logic.
+
+Must preserve:
+
+* Status transitions
+* ApprovedById update
+* ApprovalDate update
+* Concurrency behavior
+* License generation side-effects (if any)
+
+If main system uses transaction:
+
+```
+BEGIN TRANSACTION
+Approve each request
+COMMIT or ROLLBACK
+```
+
+Batch behavior must match main system:
+
+* All-or-nothing? OR
+* Partial success?
+
+Developer must inspect existing code path and mirror it.
+
+---
+
+## 6. Frontend Specification (React Vite)
+
+### Pages
+
+1. Login Page
+2. Pending Requests Page
+
+---
+
+### 6.1 Login Page
+
+* Username
+* Password
+* Submit button
+* Loading state
+* Error banner
+
+Responses:
+
+* 401 → Invalid credentials
+* 403 → Not authorized
+* 200 → Redirect to pending list
+
+---
+
+### 6.2 Pending Requests Table
+
+### Required Features
+
+* Mobile responsive layout
+* Table view (desktop)
+* Stacked card view (mobile optional)
+* Checkbox per row
+* Header checkbox (Select All)
+* Approve button per row
+* Approve Selected button
+
+---
+
+### UI Behavior Rules
+
+| Action          | Behavior                     |
+| --------------- | ---------------------------- |
+| Fetch list      | Show loading state           |
+| Empty list      | Show empty state             |
+| Approve clicked | Disable button               |
+| Multi-approve   | Disable all while processing |
+| API error       | Show toast/banner            |
+| Success         | Refresh list                 |
+
+---
+
+## 7. User Flow
+
+1. User logs in.
+2. Backend validates:
+
+   * Credentials
+   * Username in allowlist
+3. Frontend loads pending requests.
+4. User selects:
+
+   * Single Approve
+   * OR multiple + Approve Selected
+5. Backend processes.
+6. List refreshes.
+
+---
+
+## 8. Edge Case Handling
+
+### Invalid Credentials
+
+Return 401.
+
+### Valid but Not Allowed
+
+Return 403.
+
+### Approve Empty Array
+
+Return 400.
+
+### Race Condition
+
+If request already approved:
+
+Behavior must match main system:
+
+* Either:
+
+  * Skip and return partial
+  * Or fail entire transaction
+
+Developer must inspect existing behavior.
+
+---
+
+## 9. Concurrency Requirements
+
+Approval must be protected by:
+
+* Transaction
+* Row-level lock (if main system uses it)
+* OR conditional update:
+
+Example pattern:
+
+```sql
+UPDATE tblActivationKeyRequestDetails
+SET ApprovedById = @UserId,
+    ApprovalDate = GETDATE()
+WHERE Id = @Id
+AND ApprovedById IS NULL
+```
+
+This prevents double approval.
+
+---
+
+## 10. Security Requirements
+
+* No create endpoints
+* No edit endpoints
+* No delete endpoints
+* No exposure of:
+
+  * TIN
+  * SSS
+  * PHIC
+  * Internal IDs
+* Must validate JWT/session on every request
+* Must not trust frontend filtering
+
+---
+
+## 11. TDD Scenarios (Must Pass)
+
+### Positive
+
+* Valid Marvin login → list loads.
+* Pending requests exist → fields shown correctly.
+* Single approve → removed from list.
+* Multi approve → processed correctly.
+
+### Negative
+
+* Invalid credentials → 401.
+* Valid but not allowlisted → 403.
+* Empty request_ids → 400.
+* Already approved → behavior matches main system.
+
+---
+
+## 12. Done Definition
+
+All must be true:
+
+* Login uses `tblSecurityUsers`.
+* Only Marvin, Sharlyn, Diana can access.
+* Pending list displays required fields only.
+* Single approve works.
+* Multi approve works.
+* Concurrency behavior matches main system.
+* No DB migrations created.
+* All TDD scenarios pass.
+
+---
+
+## 13. Developer Checklist
+
+* [ ] Locate approval stored procedure in main system.
+* [ ] Confirm batch approval behavior.
+* [ ] Confirm definition of "pending".
+* [ ] Implement backend transaction.
+* [ ] Implement mobile responsive layout.
+* [ ] Implement select all logic.
+* [ ] Implement loading + error states.
+* [ ] Perform concurrency testing.
+* [ ] Validate against backup DB before deployment.
+
+---
+
+## 14. Non-Goals
+
+* No request creation.
+* No request editing.
+* No reporting.
+* No admin dashboard.
+* No role management UI.
+* No DB structure changes.
+
+---
+
+## 15. Deployment Model
+
+Can be deployed as:
+
+* Separate Node.js service
+* Separate frontend domain
+* Same database connection string as main system
+* HTTPS required
+* No VPN dependency
+
+---
+
+END OF AI_AGENT.md
