@@ -22,6 +22,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
+import { ActionResultDialog, type ActionResultRow } from "@/components/ui/action-result-dialog";
 import api from "../api/axios";
 
 type PendingRequest = {
@@ -57,10 +58,26 @@ type PendingRequestsResponse = {
   pagination: PaginationInfo;
 };
 
-type BannerState = {
-  type: "success" | "error";
-  title: string;
-  message: string;
+type ActionDetail = {
+  line_no?: unknown;
+  value?: unknown;
+  warning?: unknown;
+  state?: unknown;
+};
+
+type ActionApiResultItem = {
+  request_id?: number;
+  details?: ActionDetail[];
+};
+
+type ActionApiResponse = {
+  message?: string;
+  results?: ActionApiResultItem[];
+};
+
+type ActionErrorResponse = {
+  message?: string;
+  details?: ActionDetail[];
 };
 
 type PageSizeOption = 50 | 100 | 500 | 1000 | "all";
@@ -91,6 +108,52 @@ function formatDate(value: string | null) {
 
 function booleanText(value: boolean) {
   return value ? "Yes" : "No";
+}
+
+function textValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value);
+}
+
+function toActionResultRows(details: ActionDetail[] | undefined): ActionResultRow[] {
+  if (!Array.isArray(details)) {
+    return [];
+  }
+
+  return details.map((detail, index) => {
+    const parsedLineNo = Number.parseInt(String(detail.line_no), 10);
+    return {
+      line_no: Number.isNaN(parsedLineNo) || parsedLineNo < 1 ? index + 1 : parsedLineNo,
+      value: textValue(detail.value),
+      warning: textValue(detail.warning),
+      state: textValue(detail.state),
+    };
+  });
+}
+
+function flattenSuccessActionRows(payload: ActionApiResponse): ActionResultRow[] {
+  if (!Array.isArray(payload.results)) {
+    return [];
+  }
+
+  const rows: ActionResultRow[] = [];
+
+  payload.results.forEach((result) => {
+    const itemRows = toActionResultRows(result.details);
+    itemRows.forEach((itemRow) => {
+      rows.push({
+        line_no: rows.length + 1,
+        value: itemRow.value || (result.request_id ? `Request ID ${result.request_id}` : ""),
+        warning: itemRow.warning,
+        state: itemRow.state,
+      });
+    });
+  });
+
+  return rows;
 }
 
 function normalizeResponse(
@@ -182,7 +245,10 @@ function PendingRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [banner, setBanner] = useState<BannerState | null>(null);
+  const [actionResultRows, setActionResultRows] = useState<ActionResultRow[]>([]);
+  const [actionResultTitle, setActionResultTitle] = useState("");
+  const [actionResultDescription, setActionResultDescription] = useState("");
+  const [isActionResultOpen, setIsActionResultOpen] = useState(false);
   const [processingAction, setProcessingAction] = useState<"approve" | "disapprove" | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isLoadAllDialogOpen, setIsLoadAllDialogOpen] = useState(false);
@@ -254,27 +320,43 @@ function PendingRequestsPage() {
 
     try {
       setProcessingAction(action);
-      setBanner(null);
 
-      await api.post(endpoint, {
+      const response = await api.post<ActionApiResponse>(endpoint, {
         request_ids: requestIds,
       });
+      const resultRows = flattenSuccessActionRows(response.data);
 
-      setBanner({
-        type: "success",
-        title: "Success",
-        message: `${successTitle} ${requestIds.length} request(s) successfully.`,
-      });
+      setActionResultTitle(`${successTitle} Result`);
+      setActionResultDescription(response.data?.message || `${successTitle} ${requestIds.length} request(s) successfully.`);
+      setActionResultRows(
+        resultRows.length > 0
+          ? resultRows
+          : [
+              {
+                line_no: 1,
+                value: "",
+                warning: `${successTitle} ${requestIds.length} request(s) successfully.`,
+                state: "Done",
+              },
+            ]
+      );
+      setIsActionResultOpen(true);
 
       await fetchRows(page, pageSizeOption, true);
     } 
     catch (errorValue) {
-      const axiosError = errorValue as AxiosError<{ message?: string }>;
-      setBanner({
-        type: "error",
-        title: failureTitle,
-        message: axiosError.response?.data?.message || failureMessage,
-      });
+      const axiosError = errorValue as AxiosError<ActionErrorResponse>;
+      const resultRows = toActionResultRows(axiosError.response?.data?.details);
+      const message = axiosError.response?.data?.message || failureMessage;
+
+      setActionResultTitle(failureTitle);
+      setActionResultDescription(message);
+      setActionResultRows(
+        resultRows.length > 0
+          ? resultRows.map((row, index) => ({ ...row, line_no: index + 1 }))
+          : [{ line_no: 1, value: "", warning: message, state: "Failed" }]
+      );
+      setIsActionResultOpen(true);
     } 
     finally {
       setProcessingAction(null);
@@ -413,11 +495,10 @@ function PendingRequestsPage() {
                     : "Review all request activation keys across companies."}
                 </CardDescription>
                 <div className="text-xs font-medium text-slate-700">
-                  {selectedRequestId
-                    ? `Total Employee Count (All Client Companies): ${totalEmployeeCount.toLocaleString()}${
-                        totalCompanyCount > 0 ? ` across ${totalCompanyCount} compan${totalCompanyCount === 1 ? "y" : "ies"}` : ""
-                      }`
-                    : `Total Employee Count: ${totalEmployeeCount.toLocaleString()}`}
+                  {`Total Employee Count: ${totalEmployeeCount.toLocaleString()}`}
+                  {totalCompanyCount > 0
+                    ? ` across ${totalCompanyCount.toLocaleString()} compan${totalCompanyCount > 1 ? "ies" : "y"}`
+                    : ""}
                 </div>
               </div>
 
@@ -496,20 +577,6 @@ function PendingRequestsPage() {
           <Alert variant="destructive" className="shrink-0">
             <AlertTitle>Load Failed</AlertTitle>
             <AlertDescription>{loadError}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {banner ? (
-          <Alert
-            variant={banner.type === "error" ? "destructive" : "default"}
-            className={
-              banner.type === "success"
-                ? "shrink-0 border-emerald-200 bg-emerald-50 text-emerald-900"
-                : "shrink-0"
-            }
-          >
-            <AlertTitle>{banner.title}</AlertTitle>
-            <AlertDescription>{banner.message}</AlertDescription>
           </Alert>
         ) : null}
 
@@ -727,6 +794,13 @@ function PendingRequestsPage() {
         onConfirm={confirmLoadAll}
         onCancel={() => setIsLoadAllDialogOpen(false)}
         disabled={disableActions}
+      />
+      <ActionResultDialog
+        open={isActionResultOpen}
+        title={actionResultTitle}
+        description={actionResultDescription}
+        rows={actionResultRows}
+        onClose={() => setIsActionResultOpen(false)}
       />
     </div>
   );

@@ -614,34 +614,51 @@ const getClientScopeEmployeeSummary = async ({ pool, requestId }) => {
 const parseApprovalResult = (recordset) => {
   const rows = Array.isArray(recordset) ? recordset : [];
   if (rows.length === 0) {
-    return { success: false, warnings: ["No response from approval stored procedure"] };
+    return {
+      success: false,
+      warnings: ["No response from approval stored procedure"],
+      details: [
+        {
+          line_no: 1,
+          value: "",
+          warning: "No response from approval stored procedure",
+          state: "Failed",
+        },
+      ],
+    };
   }
 
-  const states = rows.map((row) => String(row.State || "").trim().toLowerCase());
-  const warnings = rows.map((row) => row.Warning).filter(Boolean);
+  const details = rows.map((row, index) => ({
+    line_no: index + 1,
+    value: row.Value == null ? "" : String(row.Value),
+    warning: row.Warning == null ? "" : String(row.Warning),
+    state: row.State == null ? "" : String(row.State),
+  }));
+
+  const states = details.map((row) => row.state.trim().toLowerCase());
+  const warnings = details.map((row) => row.warning).filter(Boolean);
   const success = states.every((state) => state === "done");
 
-  return { success, warnings };
+  return { success, warnings, details };
 };
 
-const executeApproveRequest = async ({ request, requestId, userId }) => {
+const executeValidateRequest = async ({ request, requestId, userId }) => {
   const result = await request
     .input("KeyRequestId", sql.Int, requestId)
     .input("UserId", sql.Int, userId)
+    .input("ValidateOnly", sql.Bit, 1)
     .execute("dbo.uspApproveRegInfo");
 
   return parseApprovalResult(result.recordset);
 };
 
-const executeDisapproveRequest = async ({ request, requestId }) => {
+const updateFilingStatus = async ({ request, requestId, filingStatusId }) => {
   const result = await request
     .input("RequestId", sql.Int, requestId)
+    .input("FilingStatusId", sql.Int, filingStatusId)
     .query(`
       UPDATE ard
-      SET FilingStatusId = 3,
-          ApprovalDate = NULL,
-          ApprovedById = NULL,
-          FlagId = 3
+      SET FilingStatusId = @FilingStatusId
       FROM tblActivationKeyRequestDetails ard
       WHERE ard.Id = @RequestId
         AND ard.FilingStatusId = 1
@@ -670,16 +687,49 @@ const approveActivationKeyRequests = async ({ requestIds, userId }) => {
     started = true;
 
     for (const requestId of requestIds) {
-      const request = new sql.Request(transaction);
-      const result = await executeApproveRequest({ request, requestId, userId: parsedUserId });
-      approvalResults.push({ request_id: requestId, ...result });
+      const validationRequest = new sql.Request(transaction);
+      const validation = await executeValidateRequest({
+        request: validationRequest,
+        requestId,
+        userId: parsedUserId,
+      });
 
-      if (!result.success) {
+      if (!validation.success) {
         throw new HttpError(
           409,
-          `Approval failed for request_id ${requestId}: ${result.warnings.join("; ")}`
+          `Approval failed for request_id ${requestId}: ${validation.warnings.join("; ")}`,
+          validation.details
         );
       }
+
+      const updateRequest = new sql.Request(transaction);
+      const affectedRows = await updateFilingStatus({
+        request: updateRequest,
+        requestId,
+        filingStatusId: 2,
+      });
+
+      if (affectedRows === 0) {
+        throw new HttpError(
+          409,
+          `Approval failed for request_id ${requestId}: Request is no longer pending`,
+          [
+            {
+              line_no: 1,
+              value: String(requestId),
+              warning: "Request is no longer pending",
+              state: "Failed",
+            },
+          ]
+        );
+      }
+
+      approvalResults.push({
+        request_id: requestId,
+        success: true,
+        warnings: validation.warnings,
+        details: validation.details,
+      });
     }
 
     await transaction.commit();
@@ -715,20 +765,44 @@ const disapproveActivationKeyRequests = async ({ requestIds, userId }) => {
     started = true;
 
     for (const requestId of requestIds) {
-      const request = new sql.Request(transaction);
-      const affectedRows = await executeDisapproveRequest({ request, requestId });
+      const updateRequest = new sql.Request(transaction);
+      const affectedRows = await updateFilingStatus({
+        request: updateRequest,
+        requestId,
+        filingStatusId: 3,
+      });
       const success = affectedRows > 0;
 
       disapprovalResults.push({
         request_id: requestId,
         success,
-        warnings: success ? [] : ["Request is no longer pending and cannot be disapproved"],
+        warnings: success
+          ? ["Successfully Disapproved"]
+          : ["Request is no longer pending and cannot be disapproved"],
+        details: [
+          {
+            line_no: 1,
+            value: String(requestId),
+            warning: success
+              ? "Successfully Disapproved"
+              : "Request is no longer pending and cannot be disapproved",
+            state: success ? "Done" : "Failed",
+          },
+        ],
       });
 
       if (!success) {
         throw new HttpError(
           409,
-          `Disapproval failed for request_id ${requestId}: Request is no longer pending`
+          `Disapproval failed for request_id ${requestId}: Request is no longer pending`,
+          [
+            {
+              line_no: 1,
+              value: String(requestId),
+              warning: "Request is no longer pending and cannot be disapproved",
+              state: "Failed",
+            },
+          ]
         );
       }
     }
