@@ -680,13 +680,13 @@ function PendingRequestsPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="m-0 flex flex-wrap items-center gap-2 sm:px-3">
+          {/* <CardContent className="m-0 flex flex-wrap items-center gap-2 sm:px-3">
             <Badge variant="secondary">Total: {totalItems}</Badge>
             <Badge variant="outline">Selected: {selectedRequestIds.length}</Badge>
             <Badge variant="outline">
               Page: {page} / {Math.max(1, totalPages)}
             </Badge>
-          </CardContent>
+          </CardContent> */}
         </Card>
 
         {loadError ? (
