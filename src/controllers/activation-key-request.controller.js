@@ -4,6 +4,7 @@ const {
   listActivationKeyRequestSummaryFilterOptions,
   listActivationKeyRequestDetails,
   approveActivationKeyRequests,
+  disapproveActivationKeyRequests,
 } = require("../services/activation-key-request.service");
 
 const parsePaging = (req) => {
@@ -119,7 +120,8 @@ const listActivationKeyRequestSummariesHandler = async (req, res, next) => {
       filters,
     });
     return res.status(200).json(requests);
-  } catch (error) {
+  } 
+  catch (error) {
     return next(error);
   }
 };
@@ -128,7 +130,8 @@ const listActivationKeyRequestSummaryFilterOptionsHandler = async (_req, res, ne
   try {
     const options = await listActivationKeyRequestSummaryFilterOptions();
     return res.status(200).json(options);
-  } catch (error) {
+  } 
+  catch (error) {
     return next(error);
   }
 };
@@ -158,7 +161,8 @@ const listActivationKeyRequests = async (req, res, next) => {
       requestId,
     });
     return res.status(200).json(requests);
-  } catch (error) {
+  } 
+  catch (error) {
     return next(error);
   }
 };
@@ -204,7 +208,26 @@ const approveActivationKeyRequestsHandler = async (req, res, next) => {
       message: "Activation key request(s) approved successfully",
       ...result,
     });
-  } catch (error) {
+  } 
+  catch (error) {
+    return next(error);
+  }
+};
+
+const disapproveActivationKeyRequestsHandler = async (req, res, next) => {
+  try {
+    const requestIds = parseRequestIds(req.body);
+    const result = await disapproveActivationKeyRequests({
+      requestIds,
+      userId: req.user && req.user.id,
+    });
+
+    return res.status(200).json({
+      message: "Activation key request(s) disapproved successfully",
+      ...result,
+    });
+  } 
+  catch (error) {
     return next(error);
   }
 };
@@ -214,4 +237,5 @@ module.exports = {
   listActivationKeyRequestSummaryFilterOptionsHandler,
   listActivationKeyRequests,
   approveActivationKeyRequestsHandler,
+  disapproveActivationKeyRequestsHandler,
 };

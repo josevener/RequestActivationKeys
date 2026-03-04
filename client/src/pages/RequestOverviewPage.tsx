@@ -89,7 +89,7 @@ const PAGE_SIZE_OPTIONS: Array<{ value: PageSizeOption; label: string }> = [
   { value: "all", label: "Load All" },
 ];
 const DEFAULT_SEARCH_BY: SearchByValue = "request_no";
-const DEFAULT_DATE_RANGE_PRESET: DateRangePresetValue = "last_30_days";
+const DEFAULT_DATE_RANGE_PRESET: DateRangePresetValue = "last_3_months";
 
 const SEARCH_BY_OPTIONS: Array<{ value: SearchByValue; label: string }> = [
   { value: "request_no", label: "Request No" },

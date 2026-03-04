@@ -339,7 +339,8 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
 
   if (normalizedStatus === "all") {
     whereConditions.push("ard.FilingStatusId > 0");
-  } else {
+  } 
+  else {
     whereConditions.push("ard.FilingStatusId = 1");
     whereConditions.push("ard.ApprovedById IS NULL");
     whereConditions.push("ard.ApprovalDate IS NULL");
@@ -357,12 +358,23 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
   }
 
   const countResult = await countRequest.query(`
-    SELECT COUNT(1) AS TotalItems
+    SELECT
+      COUNT(1) AS TotalItems,
+      COALESCE(SUM(ISNULL(ard.EmployeeCount, 0)), 0) AS TotalEmployeeCount
     FROM tblActivationKeyRequestDetails ard
     WHERE ${whereClause}
   `);
 
   const totalItems = countResult.recordset[0]?.TotalItems || 0;
+  const currentRequestTotalEmployeeCount = countResult.recordset[0]?.TotalEmployeeCount || 0;
+  const clientScopeSummary =
+    safeRequestId !== null && !Number.isNaN(safeRequestId) && safeRequestId > 0
+      ? await getClientScopeEmployeeSummary({ pool, requestId: safeRequestId })
+      : { totalEmployeeCount: 0, companyCount: 0 };
+  const effectiveTotalEmployeeCount =
+    safeRequestId !== null && !Number.isNaN(safeRequestId) && safeRequestId > 0
+      ? clientScopeSummary.totalEmployeeCount
+      : currentRequestTotalEmployeeCount;
   if (safeLoadAll) {
     const loadAllRequest = pool.request();
 
@@ -374,6 +386,11 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
       SELECT
         ard.Id AS RequestId,
         ard.KeyRequestId,
+        RegisteredName = CASE
+          WHEN NULLIF(LTRIM(RTRIM(ard.Branch)), '') IS NULL
+            THEN COALESCE(NULLIF(ard.RegisteredName, ''), c.Name)
+          ELSE COALESCE(NULLIF(ard.RegisteredName, ''), c.Name) + ' (' + LTRIM(RTRIM(ard.Branch)) + ')'
+        END,
         ard.FilingStatusId,
         [Status] = CASE ard.FilingStatusId
           WHEN 1 THEN 'Filed'
@@ -389,12 +406,17 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
         se.Name AS SystemEdition
       FROM tblActivationKeyRequestDetails ard
       LEFT JOIN tblSystemEditions se ON se.Id = ard.SystemEditionId
+      LEFT JOIN tblClients c ON c.Id = ard.ClientId
       WHERE ${whereClause}
       ORDER BY ard.Id DESC
     `);
 
     return {
       items: loadAllResult.recordset,
+      summary: {
+        total_employee_count: effectiveTotalEmployeeCount,
+        total_company_count: clientScopeSummary.companyCount,
+      },
       pagination: {
         page: 1,
         page_size: totalItems,
@@ -423,6 +445,11 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
     SELECT
       ard.Id AS RequestId,
       ard.KeyRequestId,
+      RegisteredName = CASE
+        WHEN NULLIF(LTRIM(RTRIM(ard.Branch)), '') IS NULL
+          THEN COALESCE(NULLIF(ard.RegisteredName, ''), c.Name)
+        ELSE COALESCE(NULLIF(ard.RegisteredName, ''), c.Name) + ' (' + LTRIM(RTRIM(ard.Branch)) + ')'
+      END,
       ard.FilingStatusId,
       [Status] = CASE ard.FilingStatusId
         WHEN 1 THEN 'Filed'
@@ -438,6 +465,7 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
       se.Name AS SystemEdition
     FROM tblActivationKeyRequestDetails ard
     LEFT JOIN tblSystemEditions se ON se.Id = ard.SystemEditionId
+    LEFT JOIN tblClients c ON c.Id = ard.ClientId
     WHERE ${whereClause}
     ORDER BY ard.Id DESC
     OFFSET @offset ROWS
@@ -446,6 +474,10 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
 
   return {
     items: result.recordset,
+    summary: {
+      total_employee_count: effectiveTotalEmployeeCount,
+      total_company_count: clientScopeSummary.companyCount,
+    },
     pagination: {
       page: effectivePage,
       page_size: safePageSize,
@@ -454,6 +486,128 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
       has_prev: effectivePage > 1,
       has_next: effectivePage < totalPages,
     },
+  };
+};
+
+const getClientScopeEmployeeSummary = async ({ pool, requestId }) => {
+  const safeRequestId = Number.parseInt(requestId, 10);
+  if (Number.isNaN(safeRequestId) || safeRequestId <= 0) {
+    return {
+      totalEmployeeCount: 0,
+      companyCount: 0,
+    };
+  }
+
+  const result = await pool
+    .request()
+    .input("requestId", sql.Int, safeRequestId)
+    .query(`
+      ;WITH StartClient AS (
+        SELECT TOP 1 ar.ClientId
+        FROM tblActivationKeyRequests ar
+        WHERE ar.Id = @requestId
+      ),
+      Ancestors AS (
+        SELECT c.Id, c.ClientOfId
+        FROM tblClients c
+        JOIN StartClient sc ON sc.ClientId = c.Id
+        UNION ALL
+        SELECT p.Id, p.ClientOfId
+        FROM tblClients p
+        JOIN Ancestors a ON a.ClientOfId = p.Id
+      ),
+      RootClient AS (
+        SELECT TOP 1 a.Id AS RootClientId
+        FROM Ancestors a
+        WHERE a.ClientOfId IS NULL
+      ),
+      ResolvedRoot AS (
+        SELECT rc.RootClientId
+        FROM RootClient rc
+        UNION ALL
+        SELECT sc.ClientId
+        FROM StartClient sc
+        WHERE NOT EXISTS (SELECT 1 FROM RootClient)
+      ),
+      ScopeClients AS (
+        SELECT c.Id
+        FROM tblClients c
+        JOIN ResolvedRoot rr ON rr.RootClientId = c.Id
+        UNION ALL
+        SELECT child.Id
+        FROM tblClients child
+        JOIN ScopeClients parentScope ON child.ClientOfId = parentScope.Id
+      ),
+      DistinctScopeClients AS (
+        SELECT DISTINCT sc.Id
+        FROM ScopeClients sc
+      ),
+      LicenseCompanyRows AS (
+        SELECT
+          CompanyKey = CAST(l.ClientId AS VARCHAR(20))
+            + '|'
+            + UPPER(LTRIM(RTRIM(ISNULL(l.RegisteredName, ''))))
+            + '|'
+            + UPPER(LTRIM(RTRIM(ISNULL(l.Branch, '')))),
+          EffectiveEmployeeCount = CASE
+            WHEN ISNULL(l.IsUnlimitedEmployeeCount, 0) = 1
+              THEN ISNULL(NULLIF(l.EmployeeCount, 0), 0)
+            ELSE ISNULL(l.EmployeeCount, 0)
+          END
+        FROM tblLicenses l
+        JOIN DistinctScopeClients sc ON sc.Id = l.ClientId
+        WHERE ISNULL(l.Active, 1) = 1
+      ),
+      LicenseByCompany AS (
+        SELECT
+          lcr.CompanyKey,
+          MAX(ISNULL(lcr.EffectiveEmployeeCount, 0)) AS EffectiveEmployeeCount
+        FROM LicenseCompanyRows lcr
+        GROUP BY lcr.CompanyKey
+      ),
+      LicenseSummary AS (
+        SELECT
+          COUNT(1) AS CompanyCount,
+          COALESCE(SUM(ISNULL(lbc.EffectiveEmployeeCount, 0)), 0) AS TotalEmployeeCount
+        FROM LicenseByCompany lbc
+      ),
+      PurchasedByClient AS (
+        SELECT
+          sc.Id AS ClientId,
+          MAX(
+            CASE
+              WHEN ISNULL(cpl.IsUnlimitedEmployees, 0) = 1
+                THEN ISNULL(NULLIF(cpl.NoOfUnliEmployees, 0), ISNULL(cpl.EmployeeCount, 0))
+              ELSE ISNULL(cpl.EmployeeCount, 0)
+            END
+          ) AS EffectiveEmployeeCount
+        FROM DistinctScopeClients sc
+        LEFT JOIN tblClientPurchasedLicense cpl ON cpl.ClientId = sc.Id
+        GROUP BY sc.Id
+      ),
+      PurchasedSummary AS (
+        SELECT
+          COUNT(1) AS CompanyCount,
+          COALESCE(SUM(ISNULL(pbc.EffectiveEmployeeCount, 0)), 0) AS TotalEmployeeCount
+        FROM PurchasedByClient pbc
+      )
+      SELECT
+        CASE
+          WHEN ISNULL(ls.CompanyCount, 0) > 0 THEN ISNULL(ls.TotalEmployeeCount, 0)
+          ELSE ISNULL(ps.TotalEmployeeCount, 0)
+        END AS TotalEmployeeCount,
+        CASE
+          WHEN ISNULL(ls.CompanyCount, 0) > 0 THEN ISNULL(ls.CompanyCount, 0)
+          ELSE ISNULL(ps.CompanyCount, 0)
+        END AS CompanyCount
+      FROM LicenseSummary ls
+      CROSS JOIN PurchasedSummary ps
+      OPTION (MAXRECURSION 100);
+    `);
+
+  return {
+    totalEmployeeCount: result.recordset[0]?.TotalEmployeeCount || 0,
+    companyCount: result.recordset[0]?.CompanyCount || 0,
   };
 };
 
@@ -477,6 +631,27 @@ const executeApproveRequest = async ({ request, requestId, userId }) => {
     .execute("dbo.uspApproveRegInfo");
 
   return parseApprovalResult(result.recordset);
+};
+
+const executeDisapproveRequest = async ({ request, requestId }) => {
+  const result = await request
+    .input("RequestId", sql.Int, requestId)
+    .query(`
+      UPDATE ard
+      SET FilingStatusId = 3,
+          ApprovalDate = NULL,
+          ApprovedById = NULL,
+          FlagId = 3
+      FROM tblActivationKeyRequestDetails ard
+      WHERE ard.Id = @RequestId
+        AND ard.FilingStatusId = 1
+        AND ard.ApprovedById IS NULL
+        AND ard.ApprovalDate IS NULL;
+
+      SELECT @@ROWCOUNT AS AffectedRows;
+    `);
+
+  return result.recordset[0]?.AffectedRows || 0;
 };
 
 const approveActivationKeyRequests = async ({ requestIds, userId }) => {
@@ -524,9 +699,62 @@ const approveActivationKeyRequests = async ({ requestIds, userId }) => {
   }
 };
 
+const disapproveActivationKeyRequests = async ({ requestIds, userId }) => {
+  const parsedUserId = Number.parseInt(userId, 10);
+  if (Number.isNaN(parsedUserId)) {
+    throw new HttpError(401, "Invalid session user context");
+  }
+
+  const pool = await getPool();
+  const transaction = new sql.Transaction(pool);
+  const disapprovalResults = [];
+  let started = false;
+
+  try {
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
+    started = true;
+
+    for (const requestId of requestIds) {
+      const request = new sql.Request(transaction);
+      const affectedRows = await executeDisapproveRequest({ request, requestId });
+      const success = affectedRows > 0;
+
+      disapprovalResults.push({
+        request_id: requestId,
+        success,
+        warnings: success ? [] : ["Request is no longer pending and cannot be disapproved"],
+      });
+
+      if (!success) {
+        throw new HttpError(
+          409,
+          `Disapproval failed for request_id ${requestId}: Request is no longer pending`
+        );
+      }
+    }
+
+    await transaction.commit();
+    started = false;
+
+    return {
+      disapproved_request_ids: requestIds,
+      results: disapprovalResults,
+    };
+  } 
+  catch (error) {
+    if (started) {
+      try {
+        await transaction.rollback();
+      } catch (_rollbackError) {}
+    }
+    throw error;
+  }
+};
+
 module.exports = {
   listActivationKeyRequestSummaries,
   listActivationKeyRequestSummaryFilterOptions,
   listActivationKeyRequestDetails,
   approveActivationKeyRequests,
+  disapproveActivationKeyRequests,
 };

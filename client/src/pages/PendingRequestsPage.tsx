@@ -1,11 +1,11 @@
 import type { AxiosError } from "axios";
 import {
   ArrowLeft,
-  CheckCheck,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  ShieldCheck,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -23,10 +23,10 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
 import api from "../api/axios";
-import { useAuth } from "../context/AuthContext";
 
 type PendingRequest = {
   RequestId: number;
+  RegisteredName: string | null;
   DaysTrial: number;
   EmployeeCount: number;
   IsPermanent: boolean;
@@ -46,13 +46,20 @@ type PaginationInfo = {
   has_next: boolean;
 };
 
+type PendingSummary = {
+  total_employee_count: number;
+  total_company_count?: number;
+};
+
 type PendingRequestsResponse = {
   items: PendingRequest[];
+  summary?: PendingSummary;
   pagination: PaginationInfo;
 };
 
 type BannerState = {
   type: "success" | "error";
+  title: string;
   message: string;
 };
 
@@ -99,8 +106,16 @@ function normalizeResponse(
       : fallbackPageSize;
 
   if (Array.isArray(payload)) {
+    const fallbackTotalEmployeeCount = payload.reduce(
+      (sum, item) => sum + (Number(item.EmployeeCount) || 0),
+      0
+    );
     return {
       items: payload,
+      summary: {
+        total_employee_count: fallbackTotalEmployeeCount,
+        total_company_count: 0,
+      },
       pagination: {
         page: fallbackPage,
         page_size: fallbackPageSizeNumber,
@@ -119,9 +134,15 @@ function normalizeResponse(
   const pageSize = Number.isInteger(p.page_size) && p.page_size >= 0 ? p.page_size : fallbackPageSizeNumber;
   const totalItems = Number.isInteger(p.total_items) && p.total_items >= 0 ? p.total_items : items.length;
   const totalPages = Number.isInteger(p.total_pages) && p.total_pages > 0 ? p.total_pages : 1;
+  const payloadTotalEmployeeCount = Number((payload.summary && payload.summary.total_employee_count) || 0);
+  const payloadTotalCompanyCount = Number((payload.summary && payload.summary.total_company_count) || 0);
 
   return {
     items,
+    summary: {
+      total_employee_count: Number.isFinite(payloadTotalEmployeeCount) ? payloadTotalEmployeeCount : 0,
+      total_company_count: Number.isFinite(payloadTotalCompanyCount) ? payloadTotalCompanyCount : 0,
+    },
     pagination: {
       page,
       page_size: pageSize,
@@ -134,7 +155,6 @@ function normalizeResponse(
 }
 
 function PendingRequestsPage() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -155,13 +175,15 @@ function PendingRequestsPage() {
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [pageSizeOption, setPageSizeOption] = useState<PageSizeOption>(DEFAULT_PAGE_SIZE);
   const [totalItems, setTotalItems] = useState(0);
+  const [totalEmployeeCount, setTotalEmployeeCount] = useState(0);
+  const [totalCompanyCount, setTotalCompanyCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [banner, setBanner] = useState<BannerState | null>(null);
-  const [isProcessingApprove, setIsProcessingApprove] = useState(false);
+  const [processingAction, setProcessingAction] = useState<"approve" | "disapprove" | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isLoadAllDialogOpen, setIsLoadAllDialogOpen] = useState(false);
 
@@ -196,6 +218,8 @@ function PendingRequestsPage() {
         setPage(normalized.pagination.page);
         setPageSize(normalized.pagination.page_size);
         setTotalItems(normalized.pagination.total_items);
+        setTotalEmployeeCount(normalized.summary?.total_employee_count || 0);
+        setTotalCompanyCount(normalized.summary?.total_company_count || 0);
         setTotalPages(normalized.pagination.total_pages);
       } 
       catch (errorValue) {
@@ -218,23 +242,29 @@ function PendingRequestsPage() {
     void fetchRows(DEFAULT_PAGE, DEFAULT_PAGE_SIZE);
   }, [fetchRows, selectedRequestId]);
 
-  const approveRequests = async (requestIds: number[]) => {
-    if (requestIds.length === 0 || isProcessingApprove || loading || isRefreshing) {
+  const processRequests = async (action: "approve" | "disapprove", requestIds: number[]) => {
+    if (requestIds.length === 0 || processingAction || loading || isRefreshing) {
       return;
     }
 
+    const endpoint = action === "approve" ? "/api/activation-key-requests/approve" : "/api/activation-key-requests/disapprove";
+    const successTitle = action === "approve" ? "Approved" : "Disapproved";
+    const failureTitle = action === "approve" ? "Approval Failed" : "Disapproval Failed";
+    const failureMessage = action === "approve" ? "Failed to approve request(s)" : "Failed to disapprove request(s)";
+
     try {
-      setIsProcessingApprove(true);
+      setProcessingAction(action);
       setBanner(null);
 
-      await api.post("/api/activation-key-requests/approve", {
+      await api.post(endpoint, {
         request_ids: requestIds,
       });
 
-        setBanner({
-          type: "success",
-          message: `Approved ${requestIds.length} request(s) successfully.`,
-        });
+      setBanner({
+        type: "success",
+        title: "Success",
+        message: `${successTitle} ${requestIds.length} request(s) successfully.`,
+      });
 
       await fetchRows(page, pageSizeOption, true);
     } 
@@ -242,11 +272,12 @@ function PendingRequestsPage() {
       const axiosError = errorValue as AxiosError<{ message?: string }>;
       setBanner({
         type: "error",
-        message: axiosError.response?.data?.message || "Failed to approve request(s)",
+        title: failureTitle,
+        message: axiosError.response?.data?.message || failureMessage,
       });
     } 
     finally {
-      setIsProcessingApprove(false);
+      setProcessingAction(null);
     }
   };
 
@@ -258,6 +289,7 @@ function PendingRequestsPage() {
         .map((row) => row.RequestId),
     [rows, selectedSet]
   );
+  const disapprovableSelectedIds = approvableSelectedIds;
 
   const allSelected = useMemo(() => {
     if (rows.length === 0 || selectedRequestIds.length !== rows.length) {
@@ -267,7 +299,7 @@ function PendingRequestsPage() {
     return rows.every((row) => selectedSet.has(row.RequestId));
   }, [rows, selectedRequestIds.length, selectedSet]);
 
-  const disableActions = isProcessingApprove || loading || isRefreshing || isNavigating;
+  const disableActions = Boolean(processingAction) || loading || isRefreshing || isNavigating;
 
   const showingFrom = rows.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const showingTo = rows.length === 0 ? 0 : (page - 1) * pageSize + rows.length;
@@ -377,9 +409,16 @@ function PendingRequestsPage() {
                 {/* Description */}
                 <CardDescription className="text-xs md:text-sm">
                   {selectedRequestId
-                    ? `Request ${selectedRequestNo || selectedRequestId} - ${selectedClient || "Selected Client"}`
+                    ? `Request No: ${selectedRequestNo || selectedRequestId} - ${selectedClient || "Selected Client"}`
                     : "Review all request activation keys across companies."}
                 </CardDescription>
+                <div className="text-xs font-medium text-slate-700">
+                  {selectedRequestId
+                    ? `Total Employee Count (All Client Companies): ${totalEmployeeCount.toLocaleString()}${
+                        totalCompanyCount > 0 ? ` across ${totalCompanyCount} compan${totalCompanyCount === 1 ? "y" : "ies"}` : ""
+                      }`
+                    : `Total Employee Count: ${totalEmployeeCount.toLocaleString()}`}
+                </div>
               </div>
 
               {/* RIGHT SIDE ACTIONS */}
@@ -387,17 +426,42 @@ function PendingRequestsPage() {
                 <Button
                   type="button"
                   onClick={() => {
-                    void approveRequests(approvableSelectedIds);
+                    void processRequests("approve", approvableSelectedIds);
                   }}
                   disabled={disableActions || approvableSelectedIds.length === 0}
-                  className="gap-2"
+                  className="h-8 gap-1.5 px-2 text-xs"
+                  aria-label="Approve selected"
+                  title="Approve selected"
                 >
-                  {isProcessingApprove ? (
-                    <Spinner className="size-4" />
+                  {processingAction === "approve" ? (
+                    <Spinner className="size-3.5" />
                   ) : (
-                    <CheckCheck className="size-4" />
+                    <ThumbsUp className="size-3.5" />
                   )}
-                  {isProcessingApprove ? "Processing" : "Approve Selected"}
+                  <span className="hidden sm:inline">
+                    {processingAction === "approve" ? "Processing" : "Approve Selected"}
+                  </span>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void processRequests("disapprove", disapprovableSelectedIds);
+                  }}
+                  disabled={disableActions || disapprovableSelectedIds.length === 0}
+                  className="h-8 gap-1.5 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                  aria-label="Disapprove selected"
+                  title="Disapprove selected"
+                >
+                  {processingAction === "disapprove" ? (
+                    <Spinner className="size-3.5" />
+                  ) : (
+                    <ThumbsDown className="size-3.5" />
+                  )}
+                  <span className="hidden sm:inline">
+                    {processingAction === "disapprove" ? "Processing" : "Disapprove Selected"}
+                  </span>
                 </Button>
 
                 <Button
@@ -425,10 +489,6 @@ function PendingRequestsPage() {
             <Badge variant="outline">
               Page: {page} / {Math.max(1, totalPages)}
             </Badge>
-            <Badge variant="outline" className="gap-1">
-              <ShieldCheck className="size-3" />
-              {user?.displayName || user?.username || "User"}
-            </Badge>
           </CardContent>
         </Card>
 
@@ -448,7 +508,7 @@ function PendingRequestsPage() {
                 : "shrink-0"
             }
           >
-            <AlertTitle>{banner.type === "error" ? "Approval Failed" : "Success"}</AlertTitle>
+            <AlertTitle>{banner.title}</AlertTitle>
             <AlertDescription>{banner.message}</AlertDescription>
           </Alert>
         ) : null}
@@ -466,10 +526,10 @@ function PendingRequestsPage() {
                   No activation key request records.
                 </div>
               ) : (
-                <table className="w-full min-w-[860px] border-collapse text-sm md:min-w-[980px]">
+                <table className="w-full min-w-[860px] border-collapse text-[11px] md:min-w-[980px]">
                   <thead>
                     <tr className="text-slate-600">
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         <input
                           type="checkbox"
                           checked={allSelected}
@@ -478,29 +538,32 @@ function PendingRequestsPage() {
                           className="size-4 accent-slate-900"
                         />
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Status
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
-                        DaysTrial
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Registered Name
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
-                        EmployeeCount
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Trial Days
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
-                        IsPermanent
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Employee Count
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
-                        IsUnlimitedEmployeeCount
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Is Permanent
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
-                        OptimizationDate
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Unlimited Employees
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
-                        SystemEdition
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Optimization Date
                       </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-3 py-3 text-left font-medium md:px-4">
-                        Action
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        System Edition
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -510,7 +573,7 @@ function PendingRequestsPage() {
 
                       return (
                         <tr key={row.RequestId} className="border-t border-slate-100 hover:bg-slate-50">
-                          <td className="px-3 py-3 md:px-4">
+                          <td className="px-2.5 py-2 md:px-3">
                             <input
                               type="checkbox"
                               checked={checked}
@@ -519,36 +582,64 @@ function PendingRequestsPage() {
                               className="size-4 accent-slate-900"
                             />
                           </td>
-                          <td className="px-3 py-3 text-slate-800 md:px-4">{row.Status || "-"}</td>
-                          <td className="px-3 py-3 text-slate-800 md:px-4">{row.DaysTrial}</td>
-                          <td className="px-3 py-3 text-slate-800 md:px-4">{row.EmployeeCount}</td>
-                          <td className="px-3 py-3 md:px-4">
+                          <td className="px-2.5 py-2 text-slate-800 md:px-3">{row.Status || "-"}</td>
+                          <td className="px-2.5 py-2 text-slate-800 md:px-3">{row.RegisteredName || "-"}</td>
+                          <td className="px-2.5 py-2 text-slate-800 md:px-3">{row.DaysTrial}</td>
+                          <td className="px-2.5 py-2 text-slate-800 md:px-3">{row.EmployeeCount}</td>
+                          <td className="px-2.5 py-2 md:px-3">
                             <Badge variant={row.IsPermanent ? "secondary" : "outline"}>
                               {booleanText(row.IsPermanent)}
                             </Badge>
                           </td>
-                          <td className="px-3 py-3 md:px-4">
+                          <td className="px-2.5 py-2 md:px-3">
                             <Badge variant={row.IsUnlimitedEmployeeCount ? "secondary" : "outline"}>
                               {booleanText(row.IsUnlimitedEmployeeCount)}
                             </Badge>
                           </td>
-                          <td className="px-3 py-3 text-slate-700 md:px-4">
+                          <td className="px-2.5 py-2 text-slate-700 md:px-3">
                             {formatDate(row.OptimizationDate)}
                           </td>
-                          <td className="px-3 py-3 text-slate-700 md:px-4">{row.SystemEdition || "-"}</td>
-                          <td className="px-3 py-3 md:px-4">
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={disableActions || row.FilingStatusId !== 1}
-                              onClick={() => {
-                                void approveRequests([row.RequestId]);
-                              }}
-                              className="gap-2"
-                            >
-                              {isProcessingApprove ? <Spinner className="size-4" /> : null}
-                              {row.FilingStatusId === 1 ? "Approve" : "Read Only"}
-                            </Button>
+                          <td className="px-2.5 py-2 text-slate-700 md:px-3">{row.SystemEdition || "-"}</td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={disableActions || row.FilingStatusId !== 1}
+                                onClick={() => {
+                                  void processRequests("approve", [row.RequestId]);
+                                }}
+                                className="h-7 gap-1 px-2 text-[11px]"
+                                aria-label={`Approve request ${row.RequestId}`}
+                                title="Approve"
+                              >
+                                {processingAction === "approve" ? (
+                                  <Spinner className="size-3.5" />
+                                ) : (
+                                  <ThumbsUp className="size-3.5" />
+                                )}
+                                <span className="hidden sm:inline">Approve</span>
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={disableActions || row.FilingStatusId !== 1}
+                                onClick={() => {
+                                  void processRequests("disapprove", [row.RequestId]);
+                                }}
+                                className="h-7 gap-1 px-2 text-[11px] border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                                aria-label={`Disapprove request ${row.RequestId}`}
+                                title="Disapprove"
+                              >
+                                {processingAction === "disapprove" ? (
+                                  <Spinner className="size-3.5" />
+                                ) : (
+                                  <ThumbsDown className="size-3.5" />
+                                )}
+                                <span className="hidden sm:inline">Disapprove</span>
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -617,12 +708,14 @@ function PendingRequestsPage() {
         </Card>
       </div>
       <LoadingState
-        show={isRefreshing || isNavigating || isProcessingApprove}
+        show={isRefreshing || isNavigating || Boolean(processingAction)}
         message={
           isNavigating
             ? "Opening request overview..."
-            : isProcessingApprove
+            : processingAction === "approve"
             ? "Processing approval..."
+            : processingAction === "disapprove"
+            ? "Processing disapproval..."
             : "Updating activation key requests..."
         }
       />
