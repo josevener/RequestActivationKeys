@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
 import api from "../api/axios";
@@ -55,9 +56,17 @@ type BannerState = {
   message: string;
 };
 
+type PageSizeOption = 50 | 100 | 500 | 1000 | "all";
+
 const DEFAULT_PAGE = 1;
-const DEFAULT_PAGE_SIZE = 20;
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const DEFAULT_PAGE_SIZE: Exclude<PageSizeOption, "all"> = 50;
+const PAGE_SIZE_OPTIONS: Array<{ value: PageSizeOption; label: string }> = [
+  { value: 50, label: "50" },
+  { value: 100, label: "100" },
+  { value: 500, label: "500" },
+  { value: 1000, label: "1000" },
+  { value: "all", label: "Load All" },
+];
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -80,14 +89,21 @@ function booleanText(value: boolean) {
 function normalizeResponse(
   payload: PendingRequestsResponse | PendingRequest[],
   fallbackPage: number,
-  fallbackPageSize: number
+  fallbackPageSize: PageSizeOption
 ): PendingRequestsResponse {
+  const fallbackPageSizeNumber =
+    fallbackPageSize === "all"
+      ? Array.isArray(payload)
+        ? payload.length
+        : DEFAULT_PAGE_SIZE
+      : fallbackPageSize;
+
   if (Array.isArray(payload)) {
     return {
       items: payload,
       pagination: {
         page: fallbackPage,
-        page_size: fallbackPageSize,
+        page_size: fallbackPageSizeNumber,
         total_items: payload.length,
         total_pages: 1,
         has_prev: false,
@@ -100,7 +116,7 @@ function normalizeResponse(
   const p = payload.pagination || ({} as PaginationInfo);
 
   const page = Number.isInteger(p.page) && p.page > 0 ? p.page : fallbackPage;
-  const pageSize = Number.isInteger(p.page_size) && p.page_size > 0 ? p.page_size : fallbackPageSize;
+  const pageSize = Number.isInteger(p.page_size) && p.page_size >= 0 ? p.page_size : fallbackPageSizeNumber;
   const totalItems = Number.isInteger(p.total_items) && p.total_items >= 0 ? p.total_items : items.length;
   const totalPages = Number.isInteger(p.total_pages) && p.total_pages > 0 ? p.total_pages : 1;
 
@@ -136,7 +152,8 @@ function PendingRequestsPage() {
   const [selectedRequestIds, setSelectedRequestIds] = useState<number[]>([]);
 
   const [page, setPage] = useState(DEFAULT_PAGE);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [pageSizeOption, setPageSizeOption] = useState<PageSizeOption>(DEFAULT_PAGE_SIZE);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -146,9 +163,10 @@ function PendingRequestsPage() {
   const [banner, setBanner] = useState<BannerState | null>(null);
   const [isProcessingApprove, setIsProcessingApprove] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isLoadAllDialogOpen, setIsLoadAllDialogOpen] = useState(false);
 
   const fetchRows = useCallback(
-    async (nextPage: number, nextPageSize: number, silent = false) => {
+    async (nextPage: number, nextPageSize: PageSizeOption, silent = false) => {
       try {
         if (silent) {
           setIsRefreshing(true);
@@ -213,12 +231,12 @@ function PendingRequestsPage() {
         request_ids: requestIds,
       });
 
-      setBanner({
-        type: "success",
-        message: `Approved ${requestIds.length} request(s) successfully.`,
-      });
+        setBanner({
+          type: "success",
+          message: `Approved ${requestIds.length} request(s) successfully.`,
+        });
 
-      await fetchRows(page, pageSize, true);
+      await fetchRows(page, pageSizeOption, true);
     } 
     catch (errorValue) {
       const axiosError = errorValue as AxiosError<{ message?: string }>;
@@ -282,7 +300,7 @@ function PendingRequestsPage() {
   };
 
   const handleRefresh = () => {
-    void fetchRows(page, pageSize, true);
+    void fetchRows(page, pageSizeOption, true);
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -297,17 +315,33 @@ function PendingRequestsPage() {
     }
 
     setPage(boundedPage);
-    void fetchRows(boundedPage, pageSize, true);
+    void fetchRows(boundedPage, pageSizeOption, true);
   };
 
-  const handlePageSizeChange = (nextPageSize: number) => {
+  const handlePageSizeChange = (nextPageSize: PageSizeOption) => {
     if (disableActions) {
       return;
     }
 
+    if (nextPageSize === "all") {
+      setIsLoadAllDialogOpen(true);
+      return;
+    }
+
     setPage(DEFAULT_PAGE);
-    setPageSize(nextPageSize);
+    setPageSizeOption(nextPageSize);
     void fetchRows(DEFAULT_PAGE, nextPageSize, true);
+  };
+
+  const confirmLoadAll = () => {
+    if (disableActions) {
+      return;
+    }
+
+    setIsLoadAllDialogOpen(false);
+    setPage(DEFAULT_PAGE);
+    setPageSizeOption("all");
+    void fetchRows(DEFAULT_PAGE, "all", true);
   };
 
   return (
@@ -535,14 +569,19 @@ function PendingRequestsPage() {
                 </label>
                 <select
                   id="page-size"
-                  value={pageSize}
-                  onChange={(event) => handlePageSizeChange(Number.parseInt(event.target.value, 10))}
+                  value={String(pageSizeOption)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    const parsed =
+                      value === "all" ? "all" : (Number.parseInt(value, 10) as Exclude<PageSizeOption, "all">);
+                    handlePageSizeChange(parsed);
+                  }}
                   disabled={disableActions}
                   className="h-8 rounded-md border border-input bg-background px-2 text-xs"
                 >
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <option key={String(option.value)} value={String(option.value)}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -586,6 +625,15 @@ function PendingRequestsPage() {
             ? "Processing approval..."
             : "Updating activation key requests..."
         }
+      />
+      <ConfirmDialog
+        open={isLoadAllDialogOpen}
+        title="Load all records?"
+        description="This can take longer and may reduce browser performance for large result sets."
+        confirmLabel="Load All"
+        onConfirm={confirmLoadAll}
+        onCancel={() => setIsLoadAllDialogOpen(false)}
+        disabled={disableActions}
       />
     </div>
   );

@@ -1,10 +1,14 @@
 const { getPool, sql } = require("./db.service");
 const { HttpError } = require("../utils/http-error");
 
-const parsePaging = ({ page, pageSize }) => {
+const parsePaging = ({ page, pageSize, loadAll }) => {
   const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
-  const safePageSize = Math.max(1, Number.parseInt(pageSize, 10) || 20);
-  return { safePage, safePageSize };
+  if (loadAll) {
+    return { safePage: 1, safePageSize: null, safeLoadAll: true };
+  }
+
+  const safePageSize = Math.max(1, Number.parseInt(pageSize, 10) || 50);
+  return { safePage, safePageSize, safeLoadAll: false };
 };
 
 const SUMMARY_DATASET_SQL = `
@@ -157,9 +161,9 @@ const SUMMARY_FILTER_WHERE_SQL = `
     AND (@DateTo IS NULL OR CONVERT(date, rs.[Date]) <= CONVERT(date, @DateTo))
 `;
 
-const listActivationKeyRequestSummaries = async ({ page, pageSize, search, filters }) => {
+const listActivationKeyRequestSummaries = async ({ page, pageSize, loadAll, search, filters }) => {
   const pool = await getPool();
-  const { safePage, safePageSize } = parsePaging({ page, pageSize });
+  const { safePage, safePageSize, safeLoadAll } = parsePaging({ page, pageSize, loadAll });
 
   const countRequest = pool.request();
   applySummarySearch(countRequest, search);
@@ -173,6 +177,43 @@ const listActivationKeyRequestSummaries = async ({ page, pageSize, search, filte
   `);
 
   const totalItems = countResult.recordset[0]?.TotalItems || 0;
+  if (safeLoadAll) {
+    const loadAllRequest = pool.request();
+    applySummarySearch(loadAllRequest, search);
+    applySummaryFilters(loadAllRequest, filters);
+
+    const loadAllResult = await loadAllRequest.query(`
+      ${SUMMARY_DATASET_SQL}
+      SELECT
+        rs.RequestId,
+        rs.RequestNo,
+        rs.Client,
+        rs.ServerLicenseType,
+        rs.AddOns,
+        rs.[Date],
+        rs.CreatedBy,
+        rs.CreationDate,
+        rs.ModifiedBy,
+        rs.ModificationDate,
+        rs.[Status]
+      FROM RequestStats rs
+      ${SUMMARY_FILTER_WHERE_SQL}
+      ORDER BY rs.CreationDate DESC, rs.RequestId DESC
+    `);
+
+    return {
+      items: loadAllResult.recordset,
+      pagination: {
+        page: 1,
+        page_size: totalItems,
+        total_items: totalItems,
+        total_pages: 1,
+        has_prev: false,
+        has_next: false,
+      },
+    };
+  }
+
   const totalPages = totalItems === 0 ? 1 : Math.ceil(totalItems / safePageSize);
   const effectivePage = Math.min(safePage, totalPages);
   const offset = (effectivePage - 1) * safePageSize;
@@ -285,9 +326,9 @@ const listActivationKeyRequestSummaryFilterOptions = async () => {
   };
 };
 
-const listActivationKeyRequestDetails = async ({ status, page, pageSize, requestId }) => {
+const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll, requestId }) => {
   const pool = await getPool();
-  const { safePage, safePageSize } = parsePaging({ page, pageSize });
+  const { safePage, safePageSize, safeLoadAll } = parsePaging({ page, pageSize, loadAll });
   const normalizedStatus = String(status || "pending").trim().toLowerCase();
   const safeRequestId =
     requestId === undefined || requestId === null
@@ -322,6 +363,49 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, request
   `);
 
   const totalItems = countResult.recordset[0]?.TotalItems || 0;
+  if (safeLoadAll) {
+    const loadAllRequest = pool.request();
+
+    if (safeRequestId !== null && !Number.isNaN(safeRequestId) && safeRequestId > 0) {
+      loadAllRequest.input("requestId", sql.Int, safeRequestId);
+    }
+
+    const loadAllResult = await loadAllRequest.query(`
+      SELECT
+        ard.Id AS RequestId,
+        ard.KeyRequestId,
+        ard.FilingStatusId,
+        [Status] = CASE ard.FilingStatusId
+          WHEN 1 THEN 'Filed'
+          WHEN 2 THEN 'Approved'
+          WHEN 3 THEN 'Disapproved'
+          ELSE ''
+        END,
+        ard.DaysTrial,
+        ard.EmployeeCount,
+        ard.IsPermanent,
+        ard.IsUnlimitedEmployeeCount,
+        ard.OptimizationDate,
+        se.Name AS SystemEdition
+      FROM tblActivationKeyRequestDetails ard
+      LEFT JOIN tblSystemEditions se ON se.Id = ard.SystemEditionId
+      WHERE ${whereClause}
+      ORDER BY ard.Id DESC
+    `);
+
+    return {
+      items: loadAllResult.recordset,
+      pagination: {
+        page: 1,
+        page_size: totalItems,
+        total_items: totalItems,
+        total_pages: 1,
+        has_prev: false,
+        has_next: false,
+      },
+    };
+  }
+
   const totalPages = totalItems === 0 ? 1 : Math.ceil(totalItems / safePageSize);
   const effectivePage = Math.min(safePage, totalPages);
   const offset = (effectivePage - 1) * safePageSize;

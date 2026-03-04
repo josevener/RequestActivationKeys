@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
 import api from "../api/axios";
@@ -61,6 +62,8 @@ type SearchByValue =
   | "modified_by"
   | "all";
 
+type PageSizeOption = 50 | 100 | 500 | 1000 | "all";
+
 type DateRangePresetValue =
   | "all_dates_1990_2099"
   | "current_date"
@@ -78,7 +81,13 @@ type DateRangePresetValue =
   | "last_12_months"
   | "custom_date";
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const PAGE_SIZE_OPTIONS: Array<{ value: PageSizeOption; label: string }> = [
+  { value: 50, label: "50" },
+  { value: 100, label: "100" },
+  { value: 500, label: "500" },
+  { value: 1000, label: "1000" },
+  { value: "all", label: "Load All" },
+];
 const DEFAULT_SEARCH_BY: SearchByValue = "request_no";
 const DEFAULT_DATE_RANGE_PRESET: DateRangePresetValue = "last_30_days";
 
@@ -227,7 +236,8 @@ function RequestOverviewPage() {
 
   const [rows, setRows] = useState<SummaryRow[]>([]);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(50);
+  const [pageSizeOption, setPageSizeOption] = useState<PageSizeOption>(50);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -245,11 +255,12 @@ function RequestOverviewPage() {
   const [error, setError] = useState("");
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isLoadAllDialogOpen, setIsLoadAllDialogOpen] = useState(false);
 
   const buildSummaryParams = useCallback(
     (
       nextPage: number,
-      nextPageSize: number,
+      nextPageSize: PageSizeOption,
       nextSearchBy: SearchByValue,
       nextSearchText: string,
       nextClient: string,
@@ -270,7 +281,7 @@ function RequestOverviewPage() {
   const fetchRows = useCallback(
     async (
       nextPage: number,
-      nextPageSize: number,
+      nextPageSize: PageSizeOption,
       nextSearchBy: SearchByValue,
       nextSearchText: string,
       nextClient: string,
@@ -304,7 +315,7 @@ function RequestOverviewPage() {
         const items = Array.isArray(payload.items) ? payload.items : [];
         const pagination = payload.pagination || {
           page: nextPage,
-          page_size: nextPageSize,
+          page_size: nextPageSize === "all" ? items.length : nextPageSize,
           total_items: items.length,
           total_pages: 1,
         };
@@ -347,7 +358,7 @@ function RequestOverviewPage() {
   }, []);
 
   useEffect(() => {
-    void fetchRows(1, 20, DEFAULT_SEARCH_BY, "", "all", initialDateRange?.from || "", initialDateRange?.to || "");
+    void fetchRows(1, 50, DEFAULT_SEARCH_BY, "", "all", initialDateRange?.from || "", initialDateRange?.to || "");
   }, [fetchRows]);
 
   useEffect(() => {
@@ -380,7 +391,7 @@ function RequestOverviewPage() {
     }
 
     setPage(1);
-    void fetchRows(1, pageSize, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
+    void fetchRows(1, pageSizeOption, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
   };
 
   const handleClearSearch = () => {
@@ -395,11 +406,12 @@ function RequestOverviewPage() {
     setSearchBy(DEFAULT_SEARCH_BY);
     setSearchText("");
     setClientFilter("all");
+    setPageSizeOption(50);
     setDateRangePreset(DEFAULT_DATE_RANGE_PRESET);
     setDateFrom(nextDateFrom);
     setDateTo(nextDateTo);
     setPage(1);
-    void fetchRows(1, pageSize, DEFAULT_SEARCH_BY, "", "all", nextDateFrom, nextDateTo, true);
+    void fetchRows(1, 50, DEFAULT_SEARCH_BY, "", "all", nextDateFrom, nextDateTo, true);
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -413,17 +425,33 @@ function RequestOverviewPage() {
     }
 
     setPage(boundedPage);
-    void fetchRows(boundedPage, pageSize, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
+    void fetchRows(boundedPage, pageSizeOption, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
   };
 
-  const handlePageSizeChange = (nextPageSize: number) => {
+  const handlePageSizeChange = (nextPageSize: PageSizeOption) => {
     if (disableActions) {
       return;
     }
 
+    if (nextPageSize === "all") {
+      setIsLoadAllDialogOpen(true);
+      return;
+    }
+
     setPage(1);
-    setPageSize(nextPageSize);
+    setPageSizeOption(nextPageSize);
     void fetchRows(1, nextPageSize, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
+  };
+
+  const confirmLoadAll = () => {
+    if (disableActions) {
+      return;
+    }
+
+    setIsLoadAllDialogOpen(false);
+    setPage(1);
+    setPageSizeOption("all");
+    void fetchRows(1, "all", searchBy, searchText, clientFilter, dateFrom, dateTo, true);
   };
 
   const pageLabel = useMemo(() => `${page} / ${Math.max(1, totalPages)}`, [page, totalPages]);
@@ -474,7 +502,7 @@ function RequestOverviewPage() {
                 onClick={() => {
                   void fetchRows(
                     page,
-                    pageSize,
+                    pageSizeOption,
                     searchBy,
                     searchText,
                     clientFilter,
@@ -744,14 +772,19 @@ function RequestOverviewPage() {
                 </label>
                 <select
                   id="request-overview-page-size"
-                  value={pageSize}
-                  onChange={(event) => handlePageSizeChange(Number.parseInt(event.target.value, 10))}
+                  value={String(pageSizeOption)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    const parsed =
+                      value === "all" ? "all" : (Number.parseInt(value, 10) as Exclude<PageSizeOption, "all">);
+                    handlePageSizeChange(parsed);
+                  }}
                   disabled={disableActions}
                   className="h-7 rounded-md border border-input bg-background px-1.5 text-[11px]"
                 >
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <option key={String(option.value)} value={String(option.value)}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -787,6 +820,15 @@ function RequestOverviewPage() {
       <LoadingState
         show={isRefreshing || isNavigating}
         message={isNavigating ? "Opening activation key requests..." : "Updating request list..."}
+      />
+      <ConfirmDialog
+        open={isLoadAllDialogOpen}
+        title="Load all records?"
+        description="This can take longer and may reduce browser performance for large result sets."
+        confirmLabel="Load All"
+        onConfirm={confirmLoadAll}
+        onCancel={() => setIsLoadAllDialogOpen(false)}
+        disabled={disableActions}
       />
     </div>
   );

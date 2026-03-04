@@ -11,17 +11,26 @@ const parsePaging = (req) => {
   const rawPageSize = req.query.page_size;
 
   const page = rawPage === undefined ? 1 : Number.parseInt(String(rawPage), 10);
-  const pageSize = rawPageSize === undefined ? 20 : Number.parseInt(String(rawPageSize), 10);
 
   if (Number.isNaN(page) || page < 1) {
     throw new HttpError(400, "page must be a positive integer");
   }
 
-  if (Number.isNaN(pageSize) || pageSize < 1 || pageSize > 100) {
-    throw new HttpError(400, "page_size must be an integer between 1 and 100");
+  if (rawPageSize === undefined) {
+    return { page, pageSize: 50, loadAll: false };
   }
 
-  return { page, pageSize };
+  const rawPageSizeValue = String(rawPageSize).trim().toLowerCase();
+  if (rawPageSizeValue === "all") {
+    return { page: 1, pageSize: null, loadAll: true };
+  }
+
+  const pageSize = Number.parseInt(rawPageSizeValue, 10);
+  if (Number.isNaN(pageSize) || pageSize < 1 || pageSize > 1000) {
+    throw new HttpError(400, "page_size must be an integer between 1 and 1000, or 'all'");
+  }
+
+  return { page, pageSize, loadAll: false };
 };
 
 const parseSummarySearch = (req) => {
@@ -99,10 +108,16 @@ const parseSummaryFilters = (req) => {
 
 const listActivationKeyRequestSummariesHandler = async (req, res, next) => {
   try {
-    const { page, pageSize } = parsePaging(req);
+    const { page, pageSize, loadAll } = parsePaging(req);
     const search = parseSummarySearch(req);
     const filters = parseSummaryFilters(req);
-    const requests = await listActivationKeyRequestSummaries({ page, pageSize, search, filters });
+    const requests = await listActivationKeyRequestSummaries({
+      page,
+      pageSize,
+      loadAll,
+      search,
+      filters,
+    });
     return res.status(200).json(requests);
   } catch (error) {
     return next(error);
@@ -134,11 +149,12 @@ const listActivationKeyRequests = async (req, res, next) => {
   }
 
   try {
-    const { page, pageSize } = parsePaging(req);
+    const { page, pageSize, loadAll } = parsePaging(req);
     const requests = await listActivationKeyRequestDetails({
       status,
       page,
       pageSize,
+      loadAll,
       requestId,
     });
     return res.status(200).json(requests);
