@@ -110,6 +110,18 @@ function booleanText(value: boolean) {
   return value ? "Yes" : "No";
 }
 
+function statusTextClass(status: string | null | undefined, filingStatusId: number | undefined) {
+  if (filingStatusId === 2 || String(status || "").trim().toLowerCase() === "approved") {
+    return "text-emerald-700";
+  }
+
+  if (filingStatusId === 3 || String(status || "").trim().toLowerCase() === "disapproved") {
+    return "text-red-700";
+  }
+
+  return "text-slate-900";
+}
+
 function textValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
@@ -637,9 +649,13 @@ function PendingRequestsPage() {
                   <tbody>
                     {rows.map((row) => {
                       const checked = selectedSet.has(row.RequestId);
+                      const rowTextColorClass = statusTextClass(row.Status, row.FilingStatusId);
 
                       return (
-                        <tr key={row.RequestId} className="border-t border-slate-100 hover:bg-slate-50">
+                        <tr
+                          key={row.RequestId}
+                          className={`border-t border-slate-100 hover:bg-slate-50 ${rowTextColorClass}`}
+                        >
                           <td className="px-2.5 py-2 md:px-3">
                             <input
                               type="checkbox"
@@ -649,24 +665,32 @@ function PendingRequestsPage() {
                               className="size-4 accent-slate-900"
                             />
                           </td>
-                          <td className="px-2.5 py-2 text-slate-800 md:px-3">{row.Status || "-"}</td>
-                          <td className="px-2.5 py-2 text-slate-800 md:px-3">{row.RegisteredName || "-"}</td>
-                          <td className="px-2.5 py-2 text-slate-800 md:px-3">{row.DaysTrial}</td>
-                          <td className="px-2.5 py-2 text-slate-800 md:px-3">{row.EmployeeCount}</td>
                           <td className="px-2.5 py-2 md:px-3">
-                            <Badge variant={row.IsPermanent ? "secondary" : "outline"}>
+                            {row.Status || "-"}
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">{row.RegisteredName || "-"}</td>
+                          <td className="px-2.5 py-2 md:px-3">{row.DaysTrial}</td>
+                          <td className="px-2.5 py-2 md:px-3">{row.EmployeeCount}</td>
+                          <td className="px-2.5 py-2 md:px-3">
+                            <Badge
+                              variant={row.IsPermanent ? "secondary" : "outline"}
+                              className={rowTextColorClass}
+                            >
                               {booleanText(row.IsPermanent)}
                             </Badge>
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
-                            <Badge variant={row.IsUnlimitedEmployeeCount ? "secondary" : "outline"}>
+                            <Badge
+                              variant={row.IsUnlimitedEmployeeCount ? "secondary" : "outline"}
+                              className={rowTextColorClass}
+                            >
                               {booleanText(row.IsUnlimitedEmployeeCount)}
                             </Badge>
                           </td>
-                          <td className="px-2.5 py-2 text-slate-700 md:px-3">
+                          <td className="px-2.5 py-2 md:px-3">
                             {formatDate(row.OptimizationDate)}
                           </td>
-                          <td className="px-2.5 py-2 text-slate-700 md:px-3">{row.SystemEdition || "-"}</td>
+                          <td className="px-2.5 py-2 md:px-3">{row.SystemEdition || "-"}</td>
                           <td className="px-2.5 py-2 md:px-3">
                             <div className="flex flex-wrap items-center gap-2">
                               <Button
