@@ -473,6 +473,7 @@ function PendingRequestsPage() {
 
   const showingFrom = rows.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const showingTo = rows.length === 0 ? 0 : (page - 1) * pageSize + rows.length;
+  const pageLabel = useMemo(() => `${page} / ${Math.max(1, totalPages)}`, [page, totalPages]);
 
   const toggleSelectAll = () => {
     if (disableActions) {
@@ -680,13 +681,6 @@ function PendingRequestsPage() {
             </div>
           </CardHeader>
 
-          {/* <CardContent className="m-0 flex flex-wrap items-center gap-2 sm:px-3">
-            <Badge variant="secondary">Total: {totalItems}</Badge>
-            <Badge variant="outline">Selected: {selectedRequestIds.length}</Badge>
-            <Badge variant="outline">
-              Page: {page} / {Math.max(1, totalPages)}
-            </Badge>
-          </CardContent> */}
         </Card>
 
         {loadError ? (
@@ -924,7 +918,7 @@ function PendingRequestsPage() {
               )}
             </div>
 
-            <div className="flex shrink-0 flex-col gap-1.5 border-t border-slate-100 px-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex shrink-0 flex-col gap-1.5 border-t border-slate-100 sm:flex-row sm:items-center sm:justify-between px-3">
               <p className="text-[11px] text-muted-foreground">
                 Showing {showingFrom}-{showingTo} of {totalItems}
               </p>
@@ -960,11 +954,11 @@ function PendingRequestsPage() {
                   disabled={disableActions || page <= 1}
                   className="h-7 gap-1 px-1.5 text-[11px]"
                 >
-                  <ChevronLeft className="size-4" />
+                  <ChevronLeft className="size-3.5" />
                   <span className="hidden sm:inline">Prev</span>
                 </Button>
                 <span className="min-w-14 text-center text-[11px] text-muted-foreground">
-                  Page {page} / {Math.max(1, totalPages)}
+                  Page {pageLabel}
                 </span>
                 <Button
                   type="button"
@@ -975,7 +969,7 @@ function PendingRequestsPage() {
                   className="h-7 gap-1 px-1.5 text-[11px]"
                 >
                   <span className="hidden sm:inline">Next</span>
-                  <ChevronRight className="size-4" />
+                  <ChevronRight className="size-3.5" />
                 </Button>
               </div>
             </div>
