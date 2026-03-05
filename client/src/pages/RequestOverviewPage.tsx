@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,6 +90,7 @@ const PAGE_SIZE_OPTIONS: Array<{ value: PageSizeOption; label: string }> = [
 ];
 const DEFAULT_SEARCH_BY: SearchByValue = "request_no";
 const DEFAULT_DATE_RANGE_PRESET: DateRangePresetValue = "last_3_months";
+const DEFAULT_PAGE_SIZE_OPTION: PageSizeOption = 50;
 
 const SEARCH_BY_OPTIONS: Array<{ value: SearchByValue; label: string }> = [
   { value: "request_no", label: "Request No" },
@@ -119,6 +120,17 @@ const DATE_RANGE_OPTIONS: Array<{ value: DateRangePresetValue; label: string }> 
   { value: "last_12_months", label: "Last 12 Months" },
   { value: "custom_date", label: "Custom Date" },
 ];
+
+const isDateRangePresetValue = (value: string | null): value is DateRangePresetValue =>
+  DATE_RANGE_OPTIONS.some((option) => option.value === value);
+
+const parseIsoDate = (value: string | null) => {
+  if (!value) {
+    return "";
+  }
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+};
 
 const toIsoDate = (value: Date) => {
   const local = new Date(value);
@@ -232,22 +244,38 @@ function formatDate(value: string | null) {
 
 function RequestOverviewPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { logout } = useAuth();
+  const [initialQuery] = useState(() => {
+    const initialDateRangePreset = isDateRangePresetValue(searchParams.get("date_preset"))
+      ? (searchParams.get("date_preset") as DateRangePresetValue)
+      : DEFAULT_DATE_RANGE_PRESET;
+    const presetDateRange = getPresetDateRange(initialDateRangePreset);
+    const initialDateFromParam = parseIsoDate(searchParams.get("date_from"));
+    const initialDateToParam = parseIsoDate(searchParams.get("date_to"));
+    const initialDateFrom = initialDateFromParam || presetDateRange?.from || "";
+    const initialDateTo = initialDateToParam || presetDateRange?.to || "";
+
+    return {
+      initialDateRangePreset,
+      initialDateFrom,
+      initialDateTo,
+    };
+  });
 
   const [rows, setRows] = useState<SummaryRow[]>([]);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
-  const [pageSizeOption, setPageSizeOption] = useState<PageSizeOption>(50);
+  const [pageSize, setPageSize] = useState(Number(DEFAULT_PAGE_SIZE_OPTION));
+  const [pageSizeOption, setPageSizeOption] = useState<PageSizeOption>(DEFAULT_PAGE_SIZE_OPTION);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
   const [searchBy, setSearchBy] = useState<SearchByValue>(DEFAULT_SEARCH_BY);
   const [searchText, setSearchText] = useState("");
   const [clientFilter, setClientFilter] = useState("all");
-  const initialDateRange = getPresetDateRange(DEFAULT_DATE_RANGE_PRESET);
-  const [dateRangePreset, setDateRangePreset] = useState<DateRangePresetValue>(DEFAULT_DATE_RANGE_PRESET);
-  const [dateFrom, setDateFrom] = useState(initialDateRange?.from || "");
-  const [dateTo, setDateTo] = useState(initialDateRange?.to || "");
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePresetValue>(initialQuery.initialDateRangePreset);
+  const [dateFrom, setDateFrom] = useState(initialQuery.initialDateFrom);
+  const [dateTo, setDateTo] = useState(initialQuery.initialDateTo);
   const [clientOptions, setClientOptions] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -256,6 +284,28 @@ function RequestOverviewPage() {
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isLoadAllDialogOpen, setIsLoadAllDialogOpen] = useState(false);
+
+  const updateOverviewUrl = useCallback(
+    (
+      nextDatePreset: DateRangePresetValue,
+      nextDateFrom: string,
+      nextDateTo: string
+    ) => {
+      const nextParams = new URLSearchParams();
+      nextParams.set("date_preset", nextDatePreset);
+
+      if (nextDateFrom) {
+        nextParams.set("date_from", nextDateFrom);
+      }
+
+      if (nextDateTo) {
+        nextParams.set("date_to", nextDateTo);
+      }
+
+      setSearchParams(nextParams, { replace: true });
+    },
+    [setSearchParams]
+  );
 
   const buildSummaryParams = useCallback(
     (
@@ -358,8 +408,16 @@ function RequestOverviewPage() {
   }, []);
 
   useEffect(() => {
-    void fetchRows(1, 50, DEFAULT_SEARCH_BY, "", "all", initialDateRange?.from || "", initialDateRange?.to || "");
-  }, [fetchRows]);
+    void fetchRows(
+      1,
+      DEFAULT_PAGE_SIZE_OPTION,
+      DEFAULT_SEARCH_BY,
+      "",
+      "all",
+      initialQuery.initialDateFrom,
+      initialQuery.initialDateTo
+    );
+  }, [fetchRows, initialQuery]);
 
   useEffect(() => {
     void fetchClientOptions();
@@ -406,12 +464,21 @@ function RequestOverviewPage() {
     setSearchBy(DEFAULT_SEARCH_BY);
     setSearchText("");
     setClientFilter("all");
-    setPageSizeOption(50);
+    setPageSizeOption(DEFAULT_PAGE_SIZE_OPTION);
     setDateRangePreset(DEFAULT_DATE_RANGE_PRESET);
     setDateFrom(nextDateFrom);
     setDateTo(nextDateTo);
     setPage(1);
-    void fetchRows(1, 50, DEFAULT_SEARCH_BY, "", "all", nextDateFrom, nextDateTo, true);
+    void fetchRows(
+      1,
+      DEFAULT_PAGE_SIZE_OPTION,
+      DEFAULT_SEARCH_BY,
+      "",
+      "all",
+      nextDateFrom,
+      nextDateTo,
+      true
+    );
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -425,7 +492,16 @@ function RequestOverviewPage() {
     }
 
     setPage(boundedPage);
-    void fetchRows(boundedPage, pageSizeOption, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
+    void fetchRows(
+      boundedPage,
+      pageSizeOption,
+      searchBy,
+      searchText,
+      clientFilter,
+      dateFrom,
+      dateTo,
+      true
+    );
   };
 
   const handlePageSizeChange = (nextPageSize: PageSizeOption) => {
@@ -465,6 +541,10 @@ function RequestOverviewPage() {
       setDateTo(range.to);
     }
   };
+
+  useEffect(() => {
+    updateOverviewUrl(dateRangePreset, dateFrom, dateTo);
+  }, [dateFrom, dateRangePreset, dateTo, updateOverviewUrl]);
 
   return (
     <div className="relative h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
