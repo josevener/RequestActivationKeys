@@ -468,7 +468,7 @@ function RequestOverviewPage() {
 
   return (
     <div className="relative h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-2">
+      <div className="mx-auto flex h-full w-full flex-col gap-2">
         <Card className="m-0 shrink-0 rounded-none border-slate-200">
           <CardHeader className="m-0 sm:px-3">
             <div className="flex items-start justify-between gap-3">
@@ -736,12 +736,12 @@ function RequestOverviewPage() {
                             type="button"
                             size="icon-sm"
                             variant="outline"
-                            className="h-7 w-7"
+                            className="h-7 w-7 cursor-pointer"
                             aria-label={`Open activation keys for request ${row.RequestNo || row.RequestId}`}
                             title="Open activation keys"
                             onClick={() => openActivationKeys(row)}
                           >
-                            <SquareArrowOutUpRight className="size-3.5" />
+                            <SquareArrowOutUpRight className="size-3.5 text-green-600" />
                           </Button>
                         </td>
                         <td className="px-2 py-2 text-slate-800 sm:px-3">{row.RequestNo || "-"}</td>

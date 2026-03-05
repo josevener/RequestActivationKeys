@@ -549,7 +549,7 @@ function PendingRequestsPage() {
 
   return (
     <div className="relative h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-2">
+      <div className="mx-auto flex h-full w-full flex-col gap-2">
         <Card className="m-0 shrink-0 rounded-none border-slate-200">
           <CardHeader className="m-0 sm:px-3">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -563,6 +563,7 @@ function PendingRequestsPage() {
                     type="button"
                     variant="outline"
                     size="icon"
+                    className="cursor-pointer"
                     onClick={() => {
                       setIsNavigating(true);
                       navigate("/requests");
@@ -582,7 +583,7 @@ function PendingRequestsPage() {
                   Review all request activation keys across companies.
                 </CardDescription>
                 {selectedRequestId ? (
-                  <div className="grid gap-1 text-[11px] text-slate-700 md:grid-cols-2">
+                  <div className="grid gap-1 text-[12px] text-slate-700 md:grid-cols-2">
                     <div>
                       <span className="font-medium">Request No:</span>{" "}
                       {displayCellText(requestInfo?.request_no || selectedRequestNo || selectedRequestId)}
@@ -627,7 +628,7 @@ function PendingRequestsPage() {
                     void processRequests("approve", approvableSelectedIds);
                   }}
                   disabled={disableActions || approvableSelectedIds.length === 0}
-                  className="h-8 w-9 gap-1.5 px-2 text-xs sm:w-[154px] sm:justify-center"
+                  className="h-8 w-9 gap-1.5 px-2 text-xs sm:w-[154px] sm:justify-center cursor-pointer"
                   aria-label="Approve selected"
                   title="Approve selected"
                 >
@@ -648,7 +649,7 @@ function PendingRequestsPage() {
                     void processRequests("disapprove", disapprovableSelectedIds);
                   }}
                   disabled={disableActions || disapprovableSelectedIds.length === 0}
-                  className="h-8 w-9 gap-1.5 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:w-[154px] sm:justify-center"
+                  className="h-8 w-9 gap-1.5 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:w-[154px] sm:justify-center cursor-pointer"
                   aria-label="Disapprove selected"
                   title="Disapprove selected"
                 >
@@ -667,7 +668,7 @@ function PendingRequestsPage() {
                   variant="outline"
                   onClick={handleRefresh}
                   disabled={disableActions}
-                  className="gap-2"
+                  className="gap-2 cursor-pointer"
                 >
                   {isRefreshing ? (
                     <Spinner className="size-4" />
@@ -743,6 +744,9 @@ function PendingRequestsPage() {
                         Unlimited Employees
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
+                        Optimization Date
+                      </th>
+                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Request Code
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
@@ -771,9 +775,6 @@ function PendingRequestsPage() {
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Approved By
-                      </th>
-                      <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
-                        Optimization Date
                       </th>
                       <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium md:px-3">
                         Status
@@ -808,7 +809,7 @@ function PendingRequestsPage() {
                                 onClick={() => {
                                   void processRequests("approve", [row.RequestId]);
                                 }}
-                                className="h-7 w-7 gap-1 px-2 text-[11px] sm:w-[104px] sm:justify-center"
+                                className="h-7 w-7 gap-1 px-2 text-[11px] sm:w-[104px] sm:justify-center cursor-pointer"
                                 aria-label={`Approve request ${row.RequestId}`}
                                 title="Approve"
                               >
@@ -827,7 +828,7 @@ function PendingRequestsPage() {
                                 onClick={() => {
                                   void processRequests("disapprove", [row.RequestId]);
                                 }}
-                                className="h-7 w-7 gap-1 px-2 text-[11px] border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:w-[104px] sm:justify-center"
+                                className="h-7 w-7 gap-1 px-2 text-[11px] border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:w-[104px] sm:justify-center cursor-pointer"
                                 aria-label={`Disapprove request ${row.RequestId}`}
                                 title="Disapprove"
                               >
@@ -875,6 +876,9 @@ function PendingRequestsPage() {
                             </Badge>
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
+                            <TruncatedText value={formatDate(row.OptimizationDate)} maxWidthClass="max-w-[130px]" />
+                          </td>
+                          <td className="px-2.5 py-2 md:px-3">
                             <TruncatedText value={row.RequestCode} maxWidthClass="max-w-[220px]" />
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
@@ -903,9 +907,6 @@ function PendingRequestsPage() {
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <TruncatedText value={row.ApprovedBy} maxWidthClass="max-w-[160px]" />
-                          </td>
-                          <td className="px-2.5 py-2 md:px-3">
-                            <TruncatedText value={formatDate(row.OptimizationDate)} maxWidthClass="max-w-[130px]" />
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <TruncatedText value={row.Status} maxWidthClass="max-w-[130px]" />
