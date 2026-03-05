@@ -1,5 +1,5 @@
 import type { AxiosError } from "axios";
-import { ArrowLeft, PackagePlus } from "lucide-react";
+import { ArrowLeft, PackagePlus, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import api from "../api/axios";
@@ -147,7 +154,7 @@ function SystemLicensePage() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState<SystemLicenseResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<"details" | "licensed_companies">("details");
+  const [isLicensedSheetOpen, setIsLicensedSheetOpen] = useState(false);
   const [licensedSearch, setLicensedSearch] = useState("");
 
   useEffect(() => {
@@ -191,6 +198,11 @@ function SystemLicensePage() {
       mounted = false;
     };
   }, [detailId, hasValidDetailId, hasValidRequestId, requestId]);
+
+  useEffect(() => {
+    // keep closed by default; user opens from edge trigger
+    setIsLicensedSheetOpen(false);
+  }, []);
 
   const licensedCompanies = data?.licensed_companies.items || [];
   const licensedSummary = data?.licensed_companies.summary;
@@ -241,6 +253,10 @@ function SystemLicensePage() {
     navigate(`/requests/activation-keys?${params.toString()}`);
   };
 
+  const toggleLicensedSheetView = () => {
+    setIsLicensedSheetOpen((previous) => !previous);
+  };
+
   return (
     <div className="relative h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto flex h-full w-full flex-col gap-2">
@@ -273,26 +289,6 @@ function SystemLicensePage() {
                   </Badge>
                 </div>
               </div>
-              <div className="grid w-full grid-cols-2 gap-1.5 sm:w-auto sm:grid-cols-none sm:auto-cols-max sm:grid-flow-col">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeTab === "details" ? "default" : "outline"}
-                  className="h-7 cursor-pointer px-2 text-[11px] sm:min-w-[90px]"
-                  onClick={() => setActiveTab("details")}
-                >
-                  Details
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeTab === "licensed_companies" ? "default" : "outline"}
-                  className="h-7 cursor-pointer px-2 text-[11px] sm:min-w-[170px]"
-                  onClick={() => setActiveTab("licensed_companies")}
-                >
-                  Licensed Company(ies)
-                </Button>
-              </div>
             </div>
           </CardHeader>
         </Card>
@@ -310,7 +306,7 @@ function SystemLicensePage() {
               <Spinner />
               Loading system license...
             </div>
-          ) : activeTab === "details" ? (
+          ) : (
             <div className="grid gap-2 pb-2">
               <Card className="rounded-none border-slate-200 shadow-sm">
                 <CardHeader className="px-3 py-2">
@@ -425,93 +421,130 @@ function SystemLicensePage() {
                 </CardContent>
               </Card>
             </div>
-          ) : (
-            <Card className="mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-slate-200">
-              <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-                <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
-                  <Input
-                    value={licensedSearch}
-                    onChange={(event) => setLicensedSearch(event.target.value)}
-                    placeholder="Search registered name, branch, TIN, edition, server license"
-                    className="h-8 max-w-md text-xs"
-                  />
-                  <Badge variant="secondary" className="rounded-sm text-[11px]">
-                    Rows: {filteredLicensedCompanies.length}
-                  </Badge>
-                  <Badge variant="outline" className="rounded-sm text-[11px]">
-                    Total Employees: {formatNumber(totalLicensedEmployeeCount)}
-                  </Badge>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto">
-                  {filteredLicensedCompanies.length === 0 ? (
-                    <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">
-                      No licensed companies found.
-                    </div>
-                  ) : (
-                    <table className="w-full min-w-[1600px] border-collapse text-[11px]">
-                      <thead>
-                        <tr className="text-slate-600">
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Registered Name</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Branch</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">TIN</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Employee Count</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Edition</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Server License</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Permanent</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Unlimited Employee</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">ESS Employee Count</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">ESS Unlimited Employee</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Has WebKiosk</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Has Recruitment</th>
-                          <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Remove DB Needs Optimization</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredLicensedCompanies.map((row) => (
-                          <tr key={row.Id} className="border-t border-slate-100 hover:bg-slate-50">
-                            <td className="px-2.5 py-2" title={displayText(row.RegisteredName)}>{displayText(row.RegisteredName)}</td>
-                            <td className="px-2.5 py-2" title={displayText(row.Branch)}>{displayText(row.Branch)}</td>
-                            <td className="px-2.5 py-2" title={displayText(row.TIN)}>{displayText(row.TIN)}</td>
-                            <td className="px-2.5 py-2">{formatNumber(row.EmployeeCount)}</td>
-                            <td className="px-2.5 py-2" title={displayText(row.Edition)}>{displayText(row.Edition)}</td>
-                            <td className="px-2.5 py-2" title={displayText(row.ServerLicense)}>{displayText(row.ServerLicense)}</td>
-                            <td className="px-2.5 py-2">
-                              <input type="checkbox" checked={Boolean(row.IsPermanent)} readOnly disabled className="size-4 accent-slate-900" />
-                            </td>
-                            <td className="px-2.5 py-2">
-                              <input type="checkbox" checked={Boolean(row.IsUnlimitedEmployeeCount)} readOnly disabled className="size-4 accent-slate-900" />
-                            </td>
-                            <td className="px-2.5 py-2">{formatNumber(row.ESSEmployeeCount)}</td>
-                            <td className="px-2.5 py-2">
-                              <input type="checkbox" checked={Boolean(row.IsESSUnlimitedEmployeeCount)} readOnly disabled className="size-4 accent-slate-900" />
-                            </td>
-                            <td className="px-2.5 py-2">
-                              <input type="checkbox" checked={Boolean(row.HasWebkiosk)} readOnly disabled className="size-4 accent-slate-900" />
-                            </td>
-                            <td className="px-2.5 py-2">
-                              <input type="checkbox" checked={Boolean(row.HasRecruitment)} readOnly disabled className="size-4 accent-slate-900" />
-                            </td>
-                            <td className="px-2.5 py-2">
-                              <input type="checkbox" checked={Boolean(row.IsNoDatabaseNeedsOpt)} readOnly disabled className="size-4 accent-slate-900" />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t border-slate-200 bg-slate-50 text-slate-700">
-                          <td className="px-2.5 py-2 font-medium" colSpan={3}>Total Employee Count</td>
-                          <td className="px-2.5 py-2 font-semibold">{formatNumber(totalLicensedEmployeeCount)}</td>
-                          <td className="px-2.5 py-2" colSpan={9} />
-                        </tr>
-                      </tfoot>
-                    </table>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
           )}
         </div>
       </div>
+      <Sheet
+        open={isLicensedSheetOpen}
+        onOpenChange={(open) => {
+          setIsLicensedSheetOpen(open);
+        }}
+        overlayClassName="bg-slate-900/20 backdrop-blur-[1px]"
+      >
+        <SheetContent
+          onOpenChange={(open) => {
+            setIsLicensedSheetOpen(open);
+          }}
+          showHandle={false}
+          className="!inset-0 !h-full !w-full !max-w-none !rounded-none"
+        >
+          <button
+            type="button"
+            onClick={toggleLicensedSheetView}
+            className="absolute left-0 top-1/2 z-20 inline-flex h-12 w-8 -translate-y-1/2 items-center justify-center rounded-r-md border border-l-0 border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-800 cursor-pointer"
+            title="Close licensed companies"
+            aria-label="Close licensed companies"
+          >
+            <PanelRightClose className="size-4 sm:size-5" />
+          </button>
+          <SheetHeader className="sticky top-0 z-20 bg-white">
+            <SheetTitle>Licensed Company(ies)</SheetTitle>
+            <SheetDescription>
+              Opens full-screen from the right-side trigger on all screen sizes.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="sticky top-[53px] z-20 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-3 py-2">
+            <Input
+              value={licensedSearch}
+              onChange={(event) => setLicensedSearch(event.target.value)}
+              placeholder="Search registered name, branch, TIN, edition, server license"
+              className="h-8 max-w-md text-xs"
+            />
+            <Badge variant="secondary" className="rounded-sm text-[11px]">
+              Rows: {filteredLicensedCompanies.length}
+            </Badge>
+            <Badge variant="outline" className="rounded-sm text-[11px]">
+              Total Employees: {formatNumber(totalLicensedEmployeeCount)}
+            </Badge>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {filteredLicensedCompanies.length === 0 ? (
+              <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">
+                No licensed companies found.
+              </div>
+            ) : (
+              <table className="w-full min-w-[1600px] border-collapse text-[11px]">
+                <thead>
+                  <tr className="text-slate-600">
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Registered Name</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Branch</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">TIN</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Employee Count</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Edition</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Server License</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Permanent</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Unlimited Employee</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">ESS Employee Count</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">ESS Unlimited Employee</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Has WebKiosk</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Has Recruitment</th>
+                    <th className="sticky top-0 z-10 bg-slate-100 px-2.5 py-2 text-left font-medium">Remove DB Needs Optimization</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLicensedCompanies.map((row) => (
+                    <tr key={row.Id} className="border-t border-slate-100 odd:bg-slate-50/40 hover:bg-slate-100/60">
+                      <td className="px-2.5 py-2" title={displayText(row.RegisteredName)}>{displayText(row.RegisteredName)}</td>
+                      <td className="px-2.5 py-2" title={displayText(row.Branch)}>{displayText(row.Branch)}</td>
+                      <td className="px-2.5 py-2" title={displayText(row.TIN)}>{displayText(row.TIN)}</td>
+                      <td className="px-2.5 py-2">{formatNumber(row.EmployeeCount)}</td>
+                      <td className="px-2.5 py-2" title={displayText(row.Edition)}>{displayText(row.Edition)}</td>
+                      <td className="px-2.5 py-2" title={displayText(row.ServerLicense)}>{displayText(row.ServerLicense)}</td>
+                      <td className="px-2.5 py-2">
+                        <input type="checkbox" checked={Boolean(row.IsPermanent)} readOnly disabled className="size-4 accent-slate-900" />
+                      </td>
+                      <td className="px-2.5 py-2">
+                        <input type="checkbox" checked={Boolean(row.IsUnlimitedEmployeeCount)} readOnly disabled className="size-4 accent-slate-900" />
+                      </td>
+                      <td className="px-2.5 py-2">{formatNumber(row.ESSEmployeeCount)}</td>
+                      <td className="px-2.5 py-2">
+                        <input type="checkbox" checked={Boolean(row.IsESSUnlimitedEmployeeCount)} readOnly disabled className="size-4 accent-slate-900" />
+                      </td>
+                      <td className="px-2.5 py-2">
+                        <input type="checkbox" checked={Boolean(row.HasWebkiosk)} readOnly disabled className="size-4 accent-slate-900" />
+                      </td>
+                      <td className="px-2.5 py-2">
+                        <input type="checkbox" checked={Boolean(row.HasRecruitment)} readOnly disabled className="size-4 accent-slate-900" />
+                      </td>
+                      <td className="px-2.5 py-2">
+                        <input type="checkbox" checked={Boolean(row.IsNoDatabaseNeedsOpt)} readOnly disabled className="size-4 accent-slate-900" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-slate-200 bg-slate-50 text-slate-700">
+                    <td className="px-2.5 py-2 font-medium" colSpan={3}>Total Employee Count</td>
+                    <td className="px-2.5 py-2 font-semibold">{formatNumber(totalLicensedEmployeeCount)}</td>
+                    <td className="px-2.5 py-2" colSpan={9} />
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+      {!isLicensedSheetOpen ? (
+        <button
+          type="button"
+          onClick={toggleLicensedSheetView}
+          className="fixed right-0 top-1/2 z-[70] inline-flex h-14 w-8 -translate-y-1/2 items-center justify-center rounded-l-md border border-r-0 border-slate-200 bg-white text-slate-600 shadow-md hover:bg-slate-50 hover:text-slate-900 cursor-pointer"
+          title="Open licensed companies full screen"
+          aria-label="Open licensed companies full screen"
+        >
+          <PanelRightOpen className="size-4 sm:size-5" />
+        </button>
+      ) : null}
       <LoadingState show={isNavigating} message="Opening activation key requests..." />
     </div>
   );
