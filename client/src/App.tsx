@@ -21,8 +21,8 @@ function App() {
       />
       <Route element={<ProtectedRoute />}>
         <Route path="/requests" element={<RequestOverviewPage />} />
-        <Route path="/requests/activation-keys" element={<PendingRequestsPage />} />
-        <Route path="/requests/system-license" element={<SystemLicensePage />} />
+        <Route path="/requests/activation_keys" element={<PendingRequestsPage />} />
+        <Route path="/requests/system_license" element={<SystemLicensePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

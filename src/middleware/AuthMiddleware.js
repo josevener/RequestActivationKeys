@@ -1,5 +1,5 @@
 const { isAllowedUsername } = require("../config/allowlist");
-const { verifyAccessToken } = require("../services/token.service");
+const { verifyAccessToken } = require("../services/TokenService");
 
 const parseBearerToken = (headerValue) => {
   if (!headerValue) {

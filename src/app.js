@@ -7,7 +7,7 @@ const morgan = require("morgan");
 
 const { env } = require("./config/env");
 const apiRouter = require("./routes");
-const { errorHandler, notFoundHandler } = require("./middleware/error.middleware");
+const { errorHandler, notFoundHandler } = require("./middleware/ErrorMiddleware");
 
 const app = express();
 

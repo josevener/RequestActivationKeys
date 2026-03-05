@@ -355,7 +355,7 @@ function PendingRequestsPage() {
         setLoadError("");
 
         const response = await api.get<PendingRequestsResponse | PendingRequest[]>(
-          "/api/activation-key-requests",
+          "/api/activation_key_requests",
           {
             params: {
               status: "all",
@@ -403,7 +403,7 @@ function PendingRequestsPage() {
       return;
     }
 
-    const endpoint = action === "approve" ? "/api/activation-key-requests/approve" : "/api/activation-key-requests/disapprove";
+    const endpoint = action === "approve" ? "/api/activation_key_requests/approve" : "/api/activation_key_requests/disapprove";
     const successTitle = action === "approve" ? "Approved" : "Disapproved";
     const failureTitle = action === "approve" ? "Approval Failed" : "Disapproval Failed";
     const failureMessage = action === "approve" ? "Failed to approve request(s)" : "Failed to disapprove request(s)";
@@ -567,7 +567,7 @@ function PendingRequestsPage() {
       request_no: selectedRequestNo || "",
       client: selectedClient || "",
     });
-    navigate(`/requests/system-license?${params.toString()}`);
+    navigate(`/requests/system_license?${params.toString()}`);
   };
 
   return (

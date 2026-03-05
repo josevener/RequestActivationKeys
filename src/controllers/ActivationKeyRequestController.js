@@ -6,7 +6,7 @@ const {
   getSystemLicenseView,
   approveActivationKeyRequests,
   disapproveActivationKeyRequests,
-} = require("../services/activation-key-request.service");
+} = require("../services/ActivationKeyRequestService");
 
 const parsePaging = (req) => {
   const rawPage = req.query.page;

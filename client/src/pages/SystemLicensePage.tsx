@@ -169,7 +169,7 @@ function SystemLicensePage() {
       try {
         setLoading(true);
         setError("");
-        const response = await api.get<SystemLicenseResponse>("/api/activation-key-requests/system-license", {
+        const response = await api.get<SystemLicenseResponse>("/api/activation_key_requests/system_license", {
           params: {
             request_id: requestId,
             ...(hasValidDetailId ? { detail_id: detailId } : {}),
@@ -240,7 +240,7 @@ function SystemLicensePage() {
 
   const handleBack = () => {
     if (!hasValidRequestId) {
-      navigate("/requests/activation-keys");
+      navigate("/requests/activation_keys");
       return;
     }
 
@@ -250,7 +250,7 @@ function SystemLicensePage() {
       request_no: requestNoParam,
       client: clientParam,
     });
-    navigate(`/requests/activation-keys?${params.toString()}`);
+    navigate(`/requests/activation_keys?${params.toString()}`);
   };
 
   const toggleLicensedSheetView = () => {

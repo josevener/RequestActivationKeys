@@ -1,6 +1,6 @@
 const { isAllowedUsername, normalizeUsername } = require("../config/allowlist");
-const { getPool, sql } = require("./db.service");
-const { authenticateLdap } = require("./ldap.service");
+const { getPool, sql } = require("./DbService");
+const { authenticateLdap } = require("./LdapService");
 const { HttpError } = require("../utils/http-error");
 
 const findSecurityUser = async (username) => {

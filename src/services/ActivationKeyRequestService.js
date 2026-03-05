@@ -1,4 +1,4 @@
-const { getPool, sql } = require("./db.service");
+const { getPool, sql } = require("./DbService");
 const { HttpError } = require("../utils/http-error");
 
 const parsePaging = ({ page, pageSize, loadAll }) => {

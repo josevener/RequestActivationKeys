@@ -1,6 +1,6 @@
 const { env } = require("../config/env");
-const { authenticateUser } = require("../services/auth.service");
-const { signAccessToken } = require("../services/token.service");
+const { authenticateUser } = require("../services/AuthService");
+const { signAccessToken } = require("../services/TokenService");
 const { HttpError } = require("../utils/http-error");
 
 const login = async (req, res, next) => {

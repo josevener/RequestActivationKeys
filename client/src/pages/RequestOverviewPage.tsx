@@ -349,7 +349,7 @@ function RequestOverviewPage() {
 
         setError("");
 
-        const response = await api.get<SummaryResponse>("/api/activation-key-requests/summary", {
+        const response = await api.get<SummaryResponse>("/api/activation_key_requests/summary", {
           params: buildSummaryParams(
             nextPage,
             nextPageSize,
@@ -395,7 +395,7 @@ function RequestOverviewPage() {
   const fetchClientOptions = useCallback(async () => {
     try {
       const response = await api.get<SummaryFilterOptionsResponse>(
-        "/api/activation-key-requests/summary/filter-options"
+        "/api/activation_key_requests/summary/filter_options"
       );
       const clients = Array.isArray(response.data?.client)
         ? response.data.client.filter((value): value is string => Boolean(value && value.trim()))
@@ -435,7 +435,7 @@ function RequestOverviewPage() {
       client: row.Client || "",
     });
 
-    navigate(`/requests/activation-keys?${params.toString()}`);
+    navigate(`/requests/activation_keys?${params.toString()}`);
   };
 
   const handleSearch = () => {
