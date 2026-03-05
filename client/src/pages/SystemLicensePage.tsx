@@ -285,6 +285,9 @@ function SystemLicensePage() {
                     Client: {displayText(clientParam || data?.client_details.client_name)}
                   </Badge>
                   <Badge variant="outline" className="rounded-sm text-[11px]">
+                    Total Employee Count: {formatNumber(totalLicensedEmployeeCount)}
+                  </Badge>
+                  <Badge variant="outline" className="rounded-sm text-[11px]">
                     Detail ID: {displayText(data?.detail_id)}
                   </Badge>
                 </div>
