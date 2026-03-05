@@ -14,7 +14,7 @@ const findSecurityUser = async (username) => {
         Id,
         UserName,
         LoginName,
-        DisplayName,
+        UserName AS DisplayName,
         LDAPUserName
       FROM tblSecurityUsers
       WHERE UserName = @username

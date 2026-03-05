@@ -17,7 +17,8 @@ const authenticateLdap = (username, password) =>
     client.bind(userDn, password, (error) => {
       if (error) {
         reject(new Error("Invalid credentials"));
-      } else {
+      } 
+      else {
         resolve();
       }
 

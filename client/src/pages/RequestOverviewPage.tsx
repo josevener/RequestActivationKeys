@@ -12,9 +12,18 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
 import api from "../api/axios";
@@ -242,10 +251,27 @@ function formatDate(value: string | null) {
   return date.toLocaleDateString();
 }
 
+function getInitials(value: string) {
+  const parts = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return "U";
+  }
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+}
+
 function RequestOverviewPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [initialQuery] = useState(() => {
     const initialDateRangePreset = isDateRangePresetValue(searchParams.get("date_preset"))
       ? (searchParams.get("date_preset") as DateRangePresetValue)
@@ -449,6 +475,7 @@ function RequestOverviewPage() {
     }
 
     setPage(1);
+    setSearchPanelOpen(false);
     void fetchRows(1, pageSizeOption, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
   };
 
@@ -469,6 +496,7 @@ function RequestOverviewPage() {
     setDateFrom(nextDateFrom);
     setDateTo(nextDateTo);
     setPage(1);
+    setSearchPanelOpen(false);
     void fetchRows(
       1,
       DEFAULT_PAGE_SIZE_OPTION,
@@ -532,6 +560,14 @@ function RequestOverviewPage() {
 
   const pageLabel = useMemo(() => `${page} / ${Math.max(1, totalPages)}`, [page, totalPages]);
 
+  const handleRefresh = () => {
+    if (disableActions) {
+      return;
+    }
+
+    void fetchRows(page, pageSizeOption, searchBy, searchText, clientFilter, dateFrom, dateTo, true);
+  };
+
   const handleDateRangePresetChange = (nextPreset: DateRangePresetValue) => {
     setDateRangePreset(nextPreset);
     const range = getPresetDateRange(nextPreset);
@@ -551,8 +587,8 @@ function RequestOverviewPage() {
       <div className="mx-auto flex h-full w-full flex-col gap-2">
         <Card className="m-0 shrink-0 rounded-none border-slate-200">
           <CardHeader className="m-0 sm:px-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0 lg:w-[300px] xl:w-[360px]">
                 <CardTitle className="text-sm leading-tight text-slate-900 sm:text-base md:text-lg">
                   Request Activation Keys
                 </CardTitle>
@@ -561,59 +597,186 @@ function RequestOverviewPage() {
                 </CardDescription>
               </div>
 
-              <Button
-                type="button"
-                variant={searchPanelOpen ? "default" : "outline"}
-                size="icon"
-                className="h-8 w-8 shrink-0 cursor-pointer"
-                aria-label={searchPanelOpen ? "Close search and actions panel" : "Open search and actions panel"}
-                onClick={() => setSearchPanelOpen((prev) => !prev)}
-              >
-                {searchPanelOpen ? <X className="size-4" /> : <Menu className="size-4" />}
-              </Button>
+              <div className="hidden min-w-0 flex-1 lg:flex lg:justify-center">
+                <div className="grid w-full max-w-[860px] grid-cols-[96px_minmax(120px,1fr)_128px_118px_102px_102px_66px_58px] items-end gap-1.5">
+                  <select
+                    value={searchBy}
+                    onChange={(event) => setSearchBy(event.target.value as SearchByValue)}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-[11px]"
+                    disabled={disableActions}
+                    aria-label="Search field"
+                  >
+                    {SEARCH_BY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        handleSearch();
+                      }
+                    }}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-[11px]"
+                    placeholder="Search text"
+                    disabled={disableActions}
+                    aria-label="Search text"
+                  />
+
+                  <select
+                    value={dateRangePreset}
+                    onChange={(event) => handleDateRangePresetChange(event.target.value as DateRangePresetValue)}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-[11px]"
+                    disabled={disableActions}
+                    aria-label="Date range"
+                  >
+                    {DATE_RANGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={clientFilter}
+                    onChange={(event) => setClientFilter(event.target.value)}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-[11px]"
+                    disabled={disableActions}
+                    aria-label="Client filter"
+                  >
+                    <option value="all">All Clients</option>
+                    {clientOptions.map((client) => (
+                      <option key={client} value={client}>
+                        {client}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(event) => {
+                      setDateRangePreset("custom_date");
+                      setDateFrom(event.target.value);
+                    }}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-[11px]"
+                    disabled={disableActions}
+                    aria-label="From date"
+                  />
+
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(event) => {
+                      setDateRangePreset("custom_date");
+                      setDateTo(event.target.value);
+                    }}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-[11px]"
+                    disabled={disableActions}
+                    aria-label="To date"
+                  />
+
+                  <Button
+                    type="button"
+                    onClick={handleSearch}
+                    disabled={disableActions}
+                    className="h-8 w-full gap-1 text-[11px] cursor-pointer"
+                  >
+                    <Search className="size-3.5" />
+                    Search
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleClearSearch}
+                    disabled={disableActions}
+                    className="h-8 w-full gap-1 text-[11px] cursor-pointer"
+                  >
+                    <X className="size-3.5" />
+                    Clear
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-9 w-auto gap-2 px-1.5 cursor-pointer"
+                      aria-label="Open user menu"
+                      title="Open user menu"
+                    >
+                      <Avatar size="default" className="ring-1 ring-slate-200">
+                        <AvatarFallback className="bg-slate-100 text-[10px] text-slate-700">
+                          {getInitials(user?.displayName || user?.username || "User")}
+                        </AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel className="py-2">
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate text-sm font-medium text-slate-900">
+                          {user?.displayName || "User"}
+                        </span>
+                        <span className="truncate text-xs font-normal text-slate-500">
+                          @{user?.username || "-"}
+                        </span>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        handleRefresh();
+                      }}
+                      disabled={disableActions}
+                      className="cursor-pointer"
+                    >
+                      <RefreshCw className="size-4" />
+                      Refresh
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        if (!disableActions) {
+                          logout();
+                        }
+                      }}
+                      disabled={disableActions}
+                      className="cursor-pointer"
+                    >
+                      <LogOut className="size-4" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button
+                  type="button"
+                  variant={searchPanelOpen ? "default" : "outline"}
+                  size="icon"
+                  className="h-8 w-8 shrink-0 cursor-pointer lg:hidden"
+                  aria-label={searchPanelOpen ? "Close filters panel" : "Open filters panel"}
+                  onClick={() => setSearchPanelOpen((prev) => !prev)}
+                >
+                  {searchPanelOpen ? <X className="size-4" /> : <Menu className="size-4" />}
+                </Button>
+              </div>
             </div>
           </CardHeader>
 
-          <CardContent className={`${searchPanelOpen ? "block" : "hidden"} m-0 sm:px-3`}>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  void fetchRows(
-                    page,
-                    pageSizeOption,
-                    searchBy,
-                    searchText,
-                    clientFilter,
-                    dateFrom,
-                    dateTo,
-                    true
-                  );
-                }}
-                disabled={disableActions}
-                className="h-8 w-full gap-1.5 text-xs sm:w-auto cursor-pointer"
-              >
-                {isRefreshing ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />}
-                Refresh
-              </Button>
-
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={logout}
-                disabled={disableActions}
-                className="h-8 w-full gap-1.5 bg-red-500 text-xs text-white hover:bg-red-600 hover:text-white sm:w-auto cursor-pointer"
-              >
-                <LogOut className="size-3.5" />
-                Logout
-              </Button>
-            </div>
-
-            <div className="text-xs font-medium text-slate-700">Filters</div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[160px_minmax(0,1fr)_200px_170px_120px_120px_96px_96px]">
-              <div className="sm:col-span-1">
+          <CardContent className={`${searchPanelOpen ? "block" : "hidden"} m-0 pt-0 sm:px-3 lg:hidden`}>
+            <div className="grid grid-cols-2 items-end gap-2">
+              <div className="col-span-1">
                 <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="search-by">
                   Field
                 </label>
@@ -632,45 +795,7 @@ function RequestOverviewPage() {
                 </select>
               </div>
 
-              <div className="sm:col-span-1 lg:col-span-1">
-                <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="search-text">
-                  Search Text
-                </label>
-                <input
-                  id="search-text"
-                  value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      handleSearch();
-                    }
-                  }}
-                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
-                  placeholder="Type value to search"
-                  disabled={disableActions}
-                />
-              </div>
-
-              <div className="sm:col-span-1">
-                <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="date-range-preset">
-                  Date Range
-                </label>
-                <select
-                  id="date-range-preset"
-                  value={dateRangePreset}
-                  onChange={(event) => handleDateRangePresetChange(event.target.value as DateRangePresetValue)}
-                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
-                  disabled={disableActions}
-                >
-                  {DATE_RANGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sm:col-span-1">
+              <div className="col-span-1">
                 <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="client-filter">
                   Client
                 </label>
@@ -690,7 +815,45 @@ function RequestOverviewPage() {
                 </select>
               </div>
 
-              <div className="sm:col-span-1">
+              <div className="col-span-2">
+                <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="search-text">
+                  Search Text
+                </label>
+                <input
+                  id="search-text"
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      handleSearch();
+                    }
+                  }}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  placeholder="Type value to search"
+                  disabled={disableActions}
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="date-range-preset">
+                  Date Range
+                </label>
+                <select
+                  id="date-range-preset"
+                  value={dateRangePreset}
+                  onChange={(event) => handleDateRangePresetChange(event.target.value as DateRangePresetValue)}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  disabled={disableActions}
+                >
+                  {DATE_RANGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-span-1">
                 <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="date-from">
                   From
                 </label>
@@ -707,7 +870,7 @@ function RequestOverviewPage() {
                 />
               </div>
 
-              <div className="sm:col-span-1">
+              <div className="col-span-1">
                 <label className="mb-1 block text-[11px] text-muted-foreground" htmlFor="date-to">
                   To
                 </label>
@@ -724,7 +887,7 @@ function RequestOverviewPage() {
                 />
               </div>
 
-              <div className="self-end sm:col-span-1">
+              <div className="self-end col-span-1">
                 <Button
                   type="button"
                   onClick={handleSearch}
@@ -736,7 +899,7 @@ function RequestOverviewPage() {
                 </Button>
               </div>
 
-              <div className="self-end sm:col-span-1">
+              <div className="self-end col-span-1">
                 <Button
                   type="button"
                   variant="outline"
@@ -748,6 +911,7 @@ function RequestOverviewPage() {
                   Clear
                 </Button>
               </div>
+
             </div>
           </CardContent>
         </Card>
