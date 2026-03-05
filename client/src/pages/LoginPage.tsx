@@ -54,7 +54,7 @@ function LoginPage() {
           gap: "14px",
         }}
       >
-        <h1 style={{ margin: 0, fontSize: "1.5rem" }}>Request Activation Keys</h1>
+        <h1 style={{ margin: 0, fontSize: "1.5rem" }}>Key Approval App</h1>
 
         {error ? (
           <div
