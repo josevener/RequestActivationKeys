@@ -1,7 +1,8 @@
 import type { AxiosError } from "axios";
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import api from "../api/axios";
+import { useNavigate } from "react-router-dom";
+import api, { setUnauthorizedHandler } from "../api/axios";
 
 type AuthUser = {
   id: number | string;
@@ -46,6 +47,7 @@ function readStoredUser(): AuthUser | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_STORAGE_KEY));
   const [user, setUser] = useState<AuthUser | null>(() => readStoredUser());
 
@@ -82,6 +84,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
   }, []);
+
+  const forceLogout = useCallback(
+    (message?: string) => {
+      logout();
+      navigate("/login", {
+        replace: true,
+        state: {
+          sessionExpired: true,
+          message: message || "Your session has expired. Please log in again.",
+        },
+      });
+    },
+    [logout, navigate]
+  );
+
+  useEffect(() => {
+    setUnauthorizedHandler(forceLogout);
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, [forceLogout]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
