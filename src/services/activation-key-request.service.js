@@ -601,6 +601,249 @@ const listActivationKeyRequestDetails = async ({ status, page, pageSize, loadAll
   };
 };
 
+const getSystemLicenseView = async ({ requestId, detailId }) => {
+  const safeRequestId = Number.parseInt(requestId, 10);
+  const safeDetailId =
+    detailId === undefined || detailId === null ? null : Number.parseInt(detailId, 10);
+
+  const pool = await getPool();
+  const detailRequest = pool.request().input("requestId", sql.Int, safeRequestId);
+  if (safeDetailId !== null && !Number.isNaN(safeDetailId) && safeDetailId > 0) {
+    detailRequest.input("detailId", sql.Int, safeDetailId);
+  }
+
+  const detailResult = await detailRequest.query(`
+    SELECT TOP 1
+      ard.Id AS DetailId,
+      ard.KeyRequestId,
+      ard.ClientId,
+      c.Code AS ClientCode,
+      c.Name AS ClientName,
+      s.Name AS SystemName,
+      se.Name AS SystemEdition,
+      slt.Name AS ServerLicenseType,
+      ard.ServerId,
+      ard.RequestCode,
+      KeyType = COALESCE(CAST(kt.KeyType AS NVARCHAR(100)), CAST(ard.KeyType AS NVARCHAR(100))),
+      ard.IsUnlimitedEmployeeCount,
+      ard.IsNoDatabaseNeedsOpt,
+      ard.EmployeeCount,
+      ard.IsPermanent,
+      ard.DaysSlow,
+      ard.DaysTrial,
+      ard.RegisteredName,
+      NULLIF(LTRIM(RTRIM(ard.Branch)), '') AS Branch,
+      ard.TIN,
+      ard.SSSno,
+      ard.PHIC,
+      ard.RegisteredAddress,
+      ard.HasRecruitment,
+      ard.HasWebkiosk,
+      ar.Reason AS RequestRemarks
+    FROM tblActivationKeyRequestDetails ard
+    INNER JOIN tblActivationKeyRequests ar ON ar.Id = ard.KeyRequestId
+    LEFT JOIN tblClients c ON c.Id = ard.ClientId
+    LEFT JOIN tblSystems s ON s.Id = ard.SystemId
+    LEFT JOIN tblSystemEditions se ON se.Id = ard.SystemEditionId
+    LEFT JOIN tblServerLicenseTypes slt ON slt.Id = ar.ServerLicenseTypeId
+    LEFT JOIN tblKeyTypes kt ON kt.Id = ard.KeyType
+    WHERE ard.KeyRequestId = @requestId
+      AND (@detailId IS NULL OR ard.Id = @detailId)
+    ORDER BY
+      CASE WHEN @detailId IS NOT NULL AND ard.Id = @detailId THEN 0 ELSE 1 END,
+      ard.Id DESC
+  `);
+
+  const selectedDetail = detailResult.recordset[0];
+  if (!selectedDetail) {
+    throw new HttpError(404, "System license detail not found for the selected request");
+  }
+
+  const selectedLicenseResult = await pool
+    .request()
+    .input("clientId", sql.Int, selectedDetail.ClientId)
+    .input("requestCode", sql.NVarChar(100), selectedDetail.RequestCode || null)
+    .input("registeredName", sql.NVarChar(255), selectedDetail.RegisteredName || null)
+    .input("branch", sql.NVarChar(255), selectedDetail.Branch || null)
+    .query(`
+      SELECT TOP 1
+        l.Id,
+        l.Code,
+        l.Name,
+        l.RegisteredName,
+        NULLIF(LTRIM(RTRIM(l.Branch)), '') AS Branch,
+        l.TIN,
+        l.SSSNo,
+        l.HDMFNo,
+        l.PHICNo,
+        l.TINBranch,
+        l.SSSBranchCode,
+        l.HDMFBranchCode,
+        l.PHICBranchCode,
+        l.RegisteredAddress,
+        l.Active,
+        l.HasRecruitment,
+        l.HasWebkiosk,
+        l.AllowOnlineRegistration,
+        l.IsSystemAutoDeactivate,
+        l.AllowableTempKeyForOnlineRegistration,
+        l.Remarks,
+        l.ServerId,
+        l.RequestCode,
+        l.KeyType,
+        l.EmployeeCount,
+        l.IsUnlimitedEmployeeCount,
+        l.IsNoDatabaseNeedsOpt,
+        l.IsPermanent,
+        l.DaysSlow,
+        l.DaysTrial
+      FROM tblLicenses l
+      WHERE l.ClientId = @clientId
+      ORDER BY
+        CASE
+          WHEN @requestCode IS NOT NULL
+            AND UPPER(LTRIM(RTRIM(ISNULL(l.RequestCode, '')))) = UPPER(LTRIM(RTRIM(@requestCode)))
+          THEN 0 ELSE 1
+        END,
+        CASE
+          WHEN @registeredName IS NOT NULL
+            AND UPPER(LTRIM(RTRIM(ISNULL(l.RegisteredName, '')))) = UPPER(LTRIM(RTRIM(@registeredName)))
+          THEN 0 ELSE 1
+        END,
+        CASE
+          WHEN UPPER(LTRIM(RTRIM(ISNULL(l.Branch, '')))) = UPPER(LTRIM(RTRIM(ISNULL(@branch, ''))))
+          THEN 0 ELSE 1
+        END,
+        l.Id DESC
+    `);
+
+  const selectedLicense = selectedLicenseResult.recordset[0] || null;
+
+  const licensedCompaniesResult = await pool
+    .request()
+    .input("clientId", sql.Int, selectedDetail.ClientId)
+    .query(`
+      ;WITH StartClient AS (
+        SELECT @clientId AS ClientId
+      ),
+      Ancestors AS (
+        SELECT c.Id, c.ClientOfId
+        FROM tblClients c
+        JOIN StartClient sc ON sc.ClientId = c.Id
+        UNION ALL
+        SELECT p.Id, p.ClientOfId
+        FROM tblClients p
+        JOIN Ancestors a ON a.ClientOfId = p.Id
+      ),
+      RootClient AS (
+        SELECT TOP 1 a.Id AS RootClientId
+        FROM Ancestors a
+        WHERE a.ClientOfId IS NULL
+      ),
+      ResolvedRoot AS (
+        SELECT rc.RootClientId
+        FROM RootClient rc
+        UNION ALL
+        SELECT sc.ClientId
+        FROM StartClient sc
+        WHERE NOT EXISTS (SELECT 1 FROM RootClient)
+      ),
+      ScopeClients AS (
+        SELECT c.Id
+        FROM tblClients c
+        JOIN ResolvedRoot rr ON rr.RootClientId = c.Id
+        UNION ALL
+        SELECT child.Id
+        FROM tblClients child
+        JOIN ScopeClients parentScope ON child.ClientOfId = parentScope.Id
+      ),
+      DistinctScopeClients AS (
+        SELECT DISTINCT sc.Id
+        FROM ScopeClients sc
+      )
+      SELECT
+        l.Id,
+        l.RegisteredName,
+        NULLIF(LTRIM(RTRIM(l.Branch)), '') AS Branch,
+        l.TIN,
+        l.EmployeeCount,
+        se.Name AS Edition,
+        slt.Name AS ServerLicense,
+        l.IsPermanent,
+        l.IsUnlimitedEmployeeCount,
+        l.ESSEmployeeCount,
+        l.IsESSUnlimitedEmployeeCount,
+        l.HasWebkiosk,
+        l.HasRecruitment,
+        l.IsNoDatabaseNeedsOpt
+      FROM tblLicenses l
+      JOIN DistinctScopeClients sc ON sc.Id = l.ClientId
+      LEFT JOIN tblSystemEditions se ON se.Id = l.SystemEditionId
+      LEFT JOIN tblServerLicenseTypes slt ON slt.Id = l.ServerLicenseTypeId
+      ORDER BY l.RegisteredName, l.Branch, l.Id DESC
+      OPTION (MAXRECURSION 100);
+    `);
+
+  const licensedCompanies = licensedCompaniesResult.recordset || [];
+  const totalEmployeeCount = licensedCompanies.reduce(
+    (sum, item) => sum + (Number(item.EmployeeCount) || 0),
+    0
+  );
+
+  return {
+    detail_id: selectedDetail.DetailId,
+    request_id: selectedDetail.KeyRequestId,
+    client_details: {
+      client_code: selectedDetail.ClientCode || null,
+      client_name: selectedDetail.ClientName || null,
+      system: selectedDetail.SystemName || null,
+      edition: selectedDetail.SystemEdition || null,
+      server_license: selectedDetail.ServerLicenseType || null,
+      server_id: selectedLicense?.ServerId || selectedDetail.ServerId || null,
+      request_code: selectedLicense?.RequestCode || selectedDetail.RequestCode || null,
+      key_type: selectedLicense?.KeyType || selectedDetail.KeyType || null,
+      is_unlimited_employee_count:
+        selectedLicense?.IsUnlimitedEmployeeCount ?? selectedDetail.IsUnlimitedEmployeeCount ?? false,
+      is_no_database_needs_opt:
+        selectedLicense?.IsNoDatabaseNeedsOpt ?? selectedDetail.IsNoDatabaseNeedsOpt ?? false,
+      employee_count: selectedLicense?.EmployeeCount ?? selectedDetail.EmployeeCount ?? 0,
+      is_permanent: selectedLicense?.IsPermanent ?? selectedDetail.IsPermanent ?? false,
+      days_slow: selectedLicense?.DaysSlow ?? selectedDetail.DaysSlow ?? 0,
+      days_trial: selectedLicense?.DaysTrial ?? selectedDetail.DaysTrial ?? 0,
+    },
+    selected_company_details: {
+      code: selectedLicense?.Code || null,
+      name: selectedLicense?.Name || selectedDetail.ClientName || null,
+      registered_name: selectedLicense?.RegisteredName || selectedDetail.RegisteredName || null,
+      branch: selectedLicense?.Branch || selectedDetail.Branch || null,
+      tin: selectedLicense?.TIN || selectedDetail.TIN || null,
+      sss_no: selectedLicense?.SSSNo || selectedDetail.SSSno || null,
+      hdmf_no: selectedLicense?.HDMFNo || null,
+      phic_no: selectedLicense?.PHICNo || selectedDetail.PHIC || null,
+      tin_branch: selectedLicense?.TINBranch || null,
+      sss_branch_code: selectedLicense?.SSSBranchCode || null,
+      hdmf_branch_code: selectedLicense?.HDMFBranchCode || null,
+      phic_branch_code: selectedLicense?.PHICBranchCode || null,
+      registered_address: selectedLicense?.RegisteredAddress || selectedDetail.RegisteredAddress || null,
+      active: selectedLicense?.Active ?? false,
+      has_recruitment: selectedLicense?.HasRecruitment ?? selectedDetail.HasRecruitment ?? false,
+      has_webkiosk: selectedLicense?.HasWebkiosk ?? selectedDetail.HasWebkiosk ?? false,
+      allow_online_registration: selectedLicense?.AllowOnlineRegistration ?? false,
+      is_system_auto_deactivate: selectedLicense?.IsSystemAutoDeactivate ?? false,
+      allowable_temp_key_for_online_registration:
+        selectedLicense?.AllowableTempKeyForOnlineRegistration ?? null,
+      remarks: selectedLicense?.Remarks || selectedDetail.RequestRemarks || null,
+    },
+    licensed_companies: {
+      items: licensedCompanies,
+      summary: {
+        total_employee_count: totalEmployeeCount,
+        total_items: licensedCompanies.length,
+      },
+    },
+  };
+};
+
 const getClientScopeEmployeeSummary = async ({ pool, requestId }) => {
   const safeRequestId = Number.parseInt(requestId, 10);
   if (Number.isNaN(safeRequestId) || safeRequestId <= 0) {
@@ -998,6 +1241,7 @@ module.exports = {
   listActivationKeyRequestSummaries,
   listActivationKeyRequestSummaryFilterOptions,
   listActivationKeyRequestDetails,
+  getSystemLicenseView,
   approveActivationKeyRequests,
   disapproveActivationKeyRequests,
 };

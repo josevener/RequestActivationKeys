@@ -4,6 +4,7 @@ import { useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import PendingRequestsPage from "./pages/PendingRequestsPage";
 import RequestOverviewPage from "./pages/RequestOverviewPage";
+import SystemLicensePage from "./pages/SystemLicensePage";
 
 function App() {
   const { isAuthenticated } = useAuth();
@@ -21,6 +22,7 @@ function App() {
       <Route element={<ProtectedRoute />}>
         <Route path="/requests" element={<RequestOverviewPage />} />
         <Route path="/requests/activation-keys" element={<PendingRequestsPage />} />
+        <Route path="/requests/system-license" element={<SystemLicensePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

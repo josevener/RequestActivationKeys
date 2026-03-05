@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  SquareArrowOutUpRight,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import api from "../api/axios";
 
 type PendingRequest = {
   RequestId: number;
+  KeyRequestId: number;
   ActivationKey: string | null;
   RegisteredName: string | null;
   Branch: string | null;
@@ -547,6 +549,27 @@ function PendingRequestsPage() {
     void fetchRows(DEFAULT_PAGE, "all", true);
   };
 
+  const openSystemLicense = (row: PendingRequest) => {
+    const requestIdToUse =
+      selectedRequestId ||
+      (Number.isFinite(Number(row.KeyRequestId)) && Number(row.KeyRequestId) > 0
+        ? Number(row.KeyRequestId)
+        : null);
+
+    if (!requestIdToUse) {
+      return;
+    }
+
+    setIsNavigating(true);
+    const params = new URLSearchParams({
+      request_id: String(requestIdToUse),
+      detail_id: String(row.RequestId),
+      request_no: selectedRequestNo || "",
+      client: selectedClient || "",
+    });
+    navigate(`/requests/system-license?${params.toString()}`);
+  };
+
   return (
     <div className="relative h-screen overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto flex h-full w-full flex-col gap-2">
@@ -802,6 +825,18 @@ function PendingRequestsPage() {
                           </td>
                           <td className="px-2.5 py-2 md:px-3">
                             <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="outline"
+                                disabled={disableActions}
+                                onClick={() => openSystemLicense(row)}
+                                aria-label={`Open system license for request detail ${row.RequestId}`}
+                                className="cursor-pointer"
+                                title="Open system license"
+                              >
+                                <SquareArrowOutUpRight className="size-3.5" />
+                              </Button>
                               <Button
                                 type="button"
                                 size="sm"

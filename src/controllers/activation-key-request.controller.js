@@ -3,6 +3,7 @@ const {
   listActivationKeyRequestSummaries,
   listActivationKeyRequestSummaryFilterOptions,
   listActivationKeyRequestDetails,
+  getSystemLicenseView,
   approveActivationKeyRequests,
   disapproveActivationKeyRequests,
 } = require("../services/activation-key-request.service");
@@ -167,6 +168,32 @@ const listActivationKeyRequests = async (req, res, next) => {
   }
 };
 
+const getSystemLicenseViewHandler = async (req, res, next) => {
+  const rawRequestId = req.query.request_id;
+  const rawDetailId = req.query.detail_id;
+
+  const requestId = Number.parseInt(String(rawRequestId), 10);
+  if (!rawRequestId || Number.isNaN(requestId) || requestId < 1) {
+    return next(new HttpError(400, "request_id must be a positive integer"));
+  }
+
+  let detailId;
+  if (rawDetailId !== undefined) {
+    detailId = Number.parseInt(String(rawDetailId), 10);
+    if (Number.isNaN(detailId) || detailId < 1) {
+      return next(new HttpError(400, "detail_id must be a positive integer"));
+    }
+  }
+
+  try {
+    const result = await getSystemLicenseView({ requestId, detailId });
+    return res.status(200).json(result);
+  } 
+  catch (error) {
+    return next(error);
+  }
+};
+
 const parseRequestIds = (payload) => {
   const { request_ids: requestIds } = payload || {};
 
@@ -236,6 +263,7 @@ module.exports = {
   listActivationKeyRequestSummariesHandler,
   listActivationKeyRequestSummaryFilterOptionsHandler,
   listActivationKeyRequests,
+  getSystemLicenseViewHandler,
   approveActivationKeyRequestsHandler,
   disapproveActivationKeyRequestsHandler,
 };
